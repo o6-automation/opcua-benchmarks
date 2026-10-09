@@ -25,7 +25,7 @@ import plotly.graph_objects as go
 
 from common.bench_db import BenchDB
 from server_capacity.run import SUITE
-from server_capacity.options import IMPLEMENTATIONS
+from server_capacity.options import DEFAULT_IMPLEMENTATIONS, IMPLEMENTATIONS
 from server_capacity.search import METHOD
 
 REPORT_MARKER = "<!-- server-capacity-report:v8 -->"
@@ -112,10 +112,12 @@ def throughput_summary(points, *, selections=None):
 def capacity_figure(points, *, selections=None):
     """Compare discovery-space averages with repeated measurements of selected loads."""
     summary = throughput_summary(points, selections=selections)
-    exploration = [summary[sdk]["discovery_mean"] for sdk in IMPLEMENTATIONS]
-    confirmations = [summary[sdk]["confirmation_mean"] for sdk in IMPLEMENTATIONS]
-    deviations = [summary[sdk]["stddev"] for sdk in IMPLEMENTATIONS]
-    discovery_details = [[summary[sdk]["discovery_loads"], summary[sdk]["discovery_failed"]] for sdk in IMPLEMENTATIONS]
+    # The opt-in SDKs only get a row when they were measured.
+    shown = [sdk for sdk in IMPLEMENTATIONS if sdk in DEFAULT_IMPLEMENTATIONS or any(c["implementation"] == sdk for c, _ in points)]
+    exploration = [summary[sdk]["discovery_mean"] for sdk in shown]
+    confirmations = [summary[sdk]["confirmation_mean"] for sdk in shown]
+    deviations = [summary[sdk]["stddev"] for sdk in shown]
+    discovery_details = [[summary[sdk]["discovery_loads"], summary[sdk]["discovery_failed"]] for sdk in shown]
     confirmation_details = [
         [
             summary[sdk]["confirmation_count"],
@@ -124,7 +126,7 @@ def capacity_figure(points, *, selections=None):
             f"{summary[sdk]['variance']:,.1f}" if summary[sdk]["variance"] is not None else "unknown (fewer than two repeats)",
             summary[sdk]["confirmation_failed"],
         ]
-        for sdk in IMPLEMENTATIONS
+        for sdk in shown
     ]
     labels = lambda values: [f"{value:,.0f}" if value is not None else "" for value in values]
     figure = go.Figure(
@@ -132,7 +134,7 @@ def capacity_figure(points, *, selections=None):
             go.Bar(
                 name="Search-space mean*",
                 orientation="h",
-                y=list(IMPLEMENTATIONS),
+                y=list(shown),
                 x=exploration,
                 marker_color="#94a3b8",
                 customdata=discovery_details,
@@ -148,7 +150,7 @@ def capacity_figure(points, *, selections=None):
             go.Bar(
                 name="Confirmation mean ±1 SD",
                 orientation="h",
-                y=list(IMPLEMENTATIONS),
+                y=list(shown),
                 x=confirmations,
                 error_x=dict(type="data", symmetric=True, array=deviations, thickness=2, width=6, color="#172554"),
                 marker_color="#2878b5",
@@ -164,7 +166,7 @@ def capacity_figure(points, *, selections=None):
             ),
         ]
     )
-    for sdk in IMPLEMENTATIONS:
+    for sdk in shown:
         if summary[sdk]["confirmation_mean"] is None:
             figure.add_annotation(
                 x=0,
@@ -181,7 +183,7 @@ def capacity_figure(points, *, selections=None):
         xaxis_title="Throughput (requests/s)",
         yaxis_title="Server SDK",
         template="plotly_white",
-        yaxis=dict(type="category", categoryorder="array", categoryarray=list(IMPLEMENTATIONS), autorange="reversed"),
+        yaxis=dict(type="category", categoryorder="array", categoryarray=list(shown), autorange="reversed"),
         xaxis=dict(rangemode="tozero", tickformat=","),
         legend=dict(orientation="h", y=1.10),
         margin=dict(r=50, b=105),

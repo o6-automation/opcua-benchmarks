@@ -1,7 +1,8 @@
 # OPC UA benchmarks
 
 Benchmarks for open62541, o6\Python, asyncua, OPC Foundation UA-.NETStandard,
-and node-opcua. Configuration, measurements, and HTML reports are stored in SQLite.
+and node-opcua, plus the Eclipse Milo, S2OPC and gopcua servers.
+Configuration, measurements, and HTML reports are stored in SQLite.
 
 | Suite | Measures |
 | --- | --- |
@@ -29,11 +30,13 @@ Optional workers have local, pinned toolchains for Linux x64/arm64:
 ```sh
 python -m bench.build --node     # Node.js and node-opcua
 python -m bench.build --dotnet   # .NET and OPC Foundation workers
+python -m bench.build --sdks     # Milo, S2OPC and gopcua servers (x64 only)
 ```
 
-Both flags can be combined. Setup downloads dependencies; sampling uses the
-installed artifacts. See [Node](common/node/README.md) and
-[.NET](common/dotnet/README.md) for details. Use `--rebuild` for a clean build
+The flags can be combined. Setup downloads dependencies; sampling uses the
+installed artifacts. See [Node](common/node/README.md),
+[.NET](common/dotnet/README.md) and [server-only SDKs](common/SDK_SERVERS.md)
+for details. Use `--rebuild` for a clean build
 and `--verbose` for compiler output.
 
 ## Run
@@ -80,7 +83,8 @@ database. The script prints the command to view the report and exits nonzero
 if any SDK is short of the requested sample count.
 
 Use Bash, not `sh`. Override `SAMPLES`, `ITERATIONS`, `WARMUP`, or
-`MAX_OUTSTANDING` as needed; the last setting is per client. The runner's
+`MAX_OUTSTANDING` as needed; the last setting is per client. `WITH_SDKS=1`
+adds the Milo, S2OPC and gopcua servers (eight in all). The runner's
 120-second collection timeout can require fewer iterations on slower hosts.
 Workers rebuilt since a saved run can change its fingerprint; start a new
 named run instead of amending incompatible measurements.

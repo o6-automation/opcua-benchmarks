@@ -1,0 +1,50 @@
+{
+  "milo": {
+    "sdk": "org.eclipse.milo:milo-sdk-server 1.1.8",
+    "archives": {
+      "jdk": {
+        "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/OpenJDK21U-jdk_x64_linux_hotspot_21.0.12.1_1.tar.gz",
+        "sha256": "ce79869e1307ed8ee1e2baa86a412b1eb5b75d10a01006d788a6f968bcfaee94",
+        "into": "deps/jdk"
+      },
+      "maven": {
+        "url": "https://repo1.maven.org/maven2/org/apache/maven/apache-maven/3.9.16/apache-maven-3.9.16-bin.tar.gz",
+        "sha256": "80ffca22aed9e8b9713a232f3394fd81d7f20322df75efdb2b047dbd3e3a23bb",
+        "into": "deps/maven"
+      }
+    },
+    "runtime": "21.0.12.1+1"
+  },
+  "gopcua": {
+    "sdk": "github.com/gopcua/opcua v0.9.1",
+    "archives": {
+      "go": {
+        "url": "https://go.dev/dl/go1.27.1.linux-amd64.tar.gz",
+        "sha256": "63d339f0da5ab53635a56f2490a7984dfe12dfcff22ad749f63edaf590168445",
+        "into": "deps/go"
+      }
+    },
+    "runtime": "go1.27.1"
+  },
+  "s2opc": {
+    "sdk": "S2OPC Toolkit 1.7.3",
+    "archives": {
+      "mbedtls": {
+        "url": "https://github.com/Mbed-TLS/mbedtls/releases/download/mbedtls-3.6.7/mbedtls-3.6.7.tar.bz2",
+        "sha256": "a7e8bcbec0e6f761b4af24f25677626b35f762f68eef79c08677a363212d11f6",
+        "into": "deps/s2opc-src/mbedtls"
+      },
+      "expat": {
+        "url": "https://github.com/libexpat/libexpat/releases/download/R_2_9_0/expat-2.9.0.tar.bz2",
+        "sha256": "775e8a68f81a748a401dc3168318d4a39484eb4f954726f21517c8f42c0ba984",
+        "into": "deps/s2opc-src/expat"
+      },
+      "s2opc": {
+        "url": "https://gitlab.com/systerel/S2OPC/-/archive/S2OPC_Toolkit_1.7.3/S2OPC-S2OPC_Toolkit_1.7.3.tar.gz",
+        "sha256": "ca28fadec1ee84ee09f6a41ed2d8478572e0dd2eb18841e18e808de9b32c6f50",
+        "into": "deps/s2opc-src/s2opc"
+      }
+    },
+    "runtime": "mbedtls 3.6.7, expat 2.9.0"
+  }
+}

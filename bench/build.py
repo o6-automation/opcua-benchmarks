@@ -55,6 +55,13 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
         "--dotnet", action="store_true", help="also bootstrap the local pinned SDK and build .NET workers in Release"
     )
     parser.add_argument("--node", action="store_true", help="also bootstrap pinned Node.js and the public node-opcua package")
+    parser.add_argument("--sdks", action="store_true", help="also build all four optional servers below")
+    for name, label in (
+        ("milo", "Eclipse Milo (pinned JDK and Maven)"),
+        ("s2opc", "S2OPC (pinned mbedtls and expat)"),
+        ("gopcua", "gopcua (pinned Go)"),
+    ):
+        parser.add_argument(f"--{name}", action="store_true", help=f"also build the optional {label} server")
     return parser.parse_args(argv)
 
 
@@ -148,6 +155,13 @@ def main(argv: list[str] | None = None) -> int:
         from bench.build_node import build
 
         results.append(build(verbose=args.verbose, force=args.rebuild))
+    from common.sdk_workers import NAMES
+
+    sdks = [name for name in NAMES if args.sdks or getattr(args, name.replace("-", "_"))]
+    if sdks:
+        from bench.build_sdks import build as build_sdks
+
+        results.extend(build_sdks(sdks, verbose=args.verbose, force=args.rebuild))
     if all(results):
         print("All binaries up to date.")
         return 0

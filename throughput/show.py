@@ -42,6 +42,7 @@ import plotly.graph_objects as go
 from plotly.offline import get_plotlyjs
 
 from common.bench_db import BenchDB
+from common.sdk_workers import LABELS as SDK_LABELS, NAMES as SDK_NAMES
 
 # Keep the named sizes in one place: the runner resolves them to element
 # counts, and the report turns them back into "array hd" for its labels.
@@ -56,7 +57,7 @@ PLOTLY_CDN = "https://cdn.plot.ly/plotly-3.0.1.min.js"
 
 # Implementations ordered best-known-first; this fixes the heatmap axes and the
 # categorical color slots, so a pair keeps its hue no matter what is filtered.
-IMPLEMENTATION_ORDER: tuple[str, ...] = ("open62541", "o6-python", "asyncua", "ua-dotnet", "node-opcua")
+IMPLEMENTATION_ORDER: tuple[str, ...] = ("open62541", "o6-python", "asyncua", "ua-dotnet", "node-opcua") + SDK_NAMES
 PAIR_ORDER: tuple[str, ...] = (
     "open62541/open62541",
     "o6-python/open62541",
@@ -178,6 +179,7 @@ IMPL_LABELS = {
     "asyncua": "asyncua",
     "ua-dotnet": "OPC Foundation (.NET)",
     "node-opcua": "node-opcua (Node.js)",
+    **SDK_LABELS,
 }
 
 

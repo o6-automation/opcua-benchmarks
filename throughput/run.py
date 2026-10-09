@@ -71,7 +71,7 @@ from throughput.benchmark_common import (
     service_calls,
 )
 from throughput.options import OPTIONS, _ALL_PAIRS
-from common import dotnet_workers, node_workers
+from common import dotnet_workers, node_workers, sdk_workers
 
 ROOT = Path(__file__).resolve().parents[1]
 # Per-implementation worker scripts. Each implementation lives in its own
@@ -90,7 +90,7 @@ O6_SERVER = SERVERS_DIR / "o6_server.py"
 ASYNCUA_CLIENT = BENCH_DIR / "asyncua" / "client.py"
 ASYNCUA_SERVER = SERVERS_DIR / "asyncua_server.py"
 
-IMPLEMENTATIONS: tuple[str, ...] = ("open62541", "o6-python", "asyncua", "ua-dotnet", "node-opcua")
+IMPLEMENTATIONS: tuple[str, ...] = ("open62541", "o6-python", "asyncua", "ua-dotnet", "node-opcua") + sdk_workers.NAMES
 ALL_PAIRS = _ALL_PAIRS
 SECURITY_POLICIES: tuple[str, ...] = ("None", "Basic256Sha256")
 PAIR_STRINGS: tuple[str, ...] = tuple(sorted(f"{client}:{server}" for client, server in ALL_PAIRS))
@@ -789,6 +789,7 @@ def server_command(
     secure: list[str],
     security: str,
     array_sizes: tuple[int, ...],
+    memory_bytes: int = 0,
 ) -> list[str]:
     """The ``subprocess.Popen`` command that starts one implementation's server.
 
@@ -799,6 +800,8 @@ def server_command(
     O6_BENCHMARK_CERTIFICATE/O6_BENCHMARK_PRIVATE_KEY in the environment,
     trusting whatever certificate the client presents. Leaving the flag off
     starts it on a plaintext endpoint, which no encrypted client can reach.
+    The optional server-only SDKs (:mod:`common.sdk_workers`) take the same
+    four flags as the Python servers; ``memory_bytes`` sizes the Milo heap.
     """
     # Every server exposes the same array variables, and every client resolves
     # NodeIds against the same list, so a size means one node on both ends.
@@ -814,6 +817,8 @@ def server_command(
         return node_workers.command("server", "throughput") + secure + arrays
     if implementation == "ua-dotnet":
         return dotnet_workers.command("server", "throughput") + secure + arrays
+    if implementation in sdk_workers.SDKS:
+        return sdk_workers.command(implementation, memory_bytes) + secure + arrays
     raise ValueError(f"unknown server implementation: {implementation!r}")
 
 
@@ -930,6 +935,7 @@ def cmd_sample(args: argparse.Namespace) -> int:
             },
         )
         dotnet_workers.prepare_metadata(store, bool(dotnet_roles), dotnet_roles, "throughput", args.amend)
+        sdk_workers.prepare_metadata(store, {s for _, s in pairs if s in sdk_workers.SDKS}, "throughput", args.amend)
     except RuntimeError as error:
         print(error, file=sys.stderr)
         return 1
@@ -1173,7 +1179,7 @@ def cmd_sample(args: argparse.Namespace) -> int:
                 else:
                     client_secure = []
                     server_secure = []
-                server_cmd = server_command(server_impl, c_server_path, server_secure, security, array_sizes)
+                server_cmd = server_command(server_impl, c_server_path, server_secure, security, array_sizes, per_process_bytes)
                 client_cmd = client_command(client, c_client_path, client_secure)
                 server_env = None
                 client_env = None
@@ -1221,11 +1227,17 @@ def cmd_sample(args: argparse.Namespace) -> int:
                             **dotnet_workers.environment(per_process_bytes, client_env),
                             "O6_BENCHMARK_PKI_ROOT": certificate_dir.name,
                         }
+                    server_limit = per_process_bytes
+                    if server_impl == "ua-dotnet":
+                        server_limit = 0
+                    elif server_impl in sdk_workers.SDKS:
+                        server_env = sdk_workers.environment(server_impl, per_process_bytes, server_env)
+                        server_limit = sdk_workers.address_space_limit(server_impl, per_process_bytes)
                     server = start_server(
                         server_cmd,
                         SERVER_READY,
                         server_env,
-                        0 if server_impl == "ua-dotnet" else per_process_bytes,
+                        server_limit,
                         server_preexec_factory,
                     )
                     if server_impl == "node-opcua":

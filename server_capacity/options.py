@@ -18,14 +18,16 @@
 
 from common.suites import ConfigOption, one_of, uniform, varying, whole_number
 
-IMPLEMENTATIONS = ("open62541", "o6-python", "asyncua", "ua-dotnet", "node-opcua")
+DEFAULT_IMPLEMENTATIONS = ("open62541", "o6-python", "asyncua", "ua-dotnet", "node-opcua")
+# The optional server-only SDKs (common/sdk_workers.py) are opt-in.
+IMPLEMENTATIONS = DEFAULT_IMPLEMENTATIONS + ("milo", "s2opc", "gopcua")
 
 OPTIONS = {
     "implementation": ConfigOption(
         "varying",
-        list(IMPLEMENTATIONS),
+        list(DEFAULT_IMPLEMENTATIONS),
         varying(one_of(*IMPLEMENTATIONS)),
-        "Servers to search using the same native scalar Read client.",
+        "Servers to search using the same native scalar Read client. milo, s2opc and gopcua are opt-in.",
     ),
     "probe_ms": ConfigOption("uniform", 1000, uniform(whole_number(250)), "Short discovery window in milliseconds."),
     "confirm_ms": ConfigOption(

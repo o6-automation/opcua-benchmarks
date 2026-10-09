@@ -35,7 +35,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-from common import dotnet_workers, node_workers
+from common import dotnet_workers, node_workers, sdk_workers
 from common.bench_db import BenchDB
 from common.contract import DEFAULT_ENDPOINT, SERVER_READY
 from common.histogram import BUCKETS as HISTOGRAM_BUCKETS
@@ -76,7 +76,7 @@ SERVERS_DIR = ROOT / "common" / "servers"
 O6_SERVER = SERVERS_DIR / "o6_server.py"
 ASYNCUA_SERVER = SERVERS_DIR / "asyncua_server.py"
 
-IMPLEMENTATIONS: tuple[str, ...] = ("open62541", "o6-python", "asyncua", "ua-dotnet", "node-opcua")
+IMPLEMENTATIONS: tuple[str, ...] = ("open62541", "o6-python", "asyncua", "ua-dotnet", "node-opcua") + sdk_workers.NAMES
 # Each cell retains at least seven samples after discarding its first new sample.
 SAMPLES_DEFAULT = 7
 MIN_SAMPLES = 7  # the validator's lower bound; do not edit past this
@@ -383,6 +383,8 @@ def server_command(implementation: str, c_server: Path) -> list[str]:
         return node_workers.command("server", "server_limits")
     if implementation == "ua-dotnet":
         return dotnet_workers.command("server", "server_limits")
+    if implementation in sdk_workers.SDKS:
+        return sdk_workers.command(implementation)
     raise ValueError(f"unknown server implementation: {implementation!r}")
 
 
@@ -453,6 +455,8 @@ def run_one_implementation(
                 "O6_BENCHMARK_PKI_ROOT": pki_dir.name,
             }
             if pki_dir
+            else sdk_workers.environment(implementation)
+            if implementation in sdk_workers.SDKS
             else None
         ),
     )
@@ -846,6 +850,9 @@ def cmd_sample(args: argparse.Namespace) -> int:
         )
         dotnet_workers.prepare_metadata(
             store, "ua-dotnet" in implementations, {"server"}, "server_limits", bool(getattr(args, "amend", False))
+        )
+        sdk_workers.prepare_metadata(
+            store, set(implementations) & set(sdk_workers.SDKS), "server_limits", bool(getattr(args, "amend", False))
         )
     except RuntimeError as error:
         print(error, file=sys.stderr)

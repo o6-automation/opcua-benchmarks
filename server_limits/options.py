@@ -30,7 +30,9 @@ from common.suites import (
 )
 
 
-_IMPLEMENTATIONS: tuple[str, ...] = ("open62541", "o6-python", "asyncua", "ua-dotnet", "node-opcua")
+_IMPLEMENTATIONS: tuple[str, ...] = (
+    "open62541", "o6-python", "asyncua", "ua-dotnet", "node-opcua", "milo", "s2opc", "gopcua"
+)
 _MIN_SAMPLES = 7
 _SAMPLES_DEFAULT = 7
 
@@ -42,7 +44,8 @@ OPTIONS: dict[str, ConfigOption] = {
         coerce=varying(one_of(*_IMPLEMENTATIONS)),
         help=(
             "Server implementations to push to their limit, each measured against the "
-            "same fixed open62541 C client. ua-dotnet and node-opcua are opt-in. Delete the ones you do not want measured."
+            "same fixed open62541 C client. ua-dotnet, node-opcua, milo, s2opc and gopcua are opt-in. "
+            "Delete the ones you do not want measured."
         ),
     ),
     "step_seconds": ConfigOption(

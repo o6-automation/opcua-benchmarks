@@ -29,7 +29,7 @@ import tempfile
 import threading
 import time
 
-from common import dotnet_workers, node_workers
+from common import dotnet_workers, node_workers, sdk_workers
 from common.bench_db import BenchDB
 from common.contract import SERVER_READY
 from common.histogram import BUCKETS, merge, percentile_ms
@@ -205,6 +205,8 @@ def running_server(implementation, deadline, report=lambda phase: None):
             environment = node_workers.environment()
         elif implementation == "ua-dotnet":
             environment = dotnet_workers.environment()
+        elif implementation in sdk_workers.SDKS:
+            environment = sdk_workers.environment(implementation)
         environment["O6_BENCHMARK_PKI_ROOT"] = pki
         try:
             report("starting server")
@@ -378,6 +380,12 @@ def cmd_sample(database, num_samples=3, amend=False, skip_failed=False):
                 try:
                     identity[implementation] = workers.preflight({"server"}, "server_limits")
                 except (OSError, RuntimeError, ValueError) as error:
+                    optional_errors[implementation] = str(error)
+        for implementation in sdk_workers.NAMES:
+            if implementation in varying["implementation"]:
+                try:
+                    identity[implementation] = sdk_workers.preflight(implementation, "server_limits")
+                except RuntimeError as error:
                     optional_errors[implementation] = str(error)
         if amend and not amendment_compatible(
             store.stored_metadata.get("measurement_identity", identity),

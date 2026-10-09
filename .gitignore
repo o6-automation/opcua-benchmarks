@@ -33,3 +33,12 @@ results/
 /deps/nuget/
 /deps/nodejs/
 /deps/node-state/
+/deps/downloads/
+/deps/jdk/
+/deps/maven/
+/deps/go/
+/deps/s2opc/
+/deps/s2opc-src/
+/deps/s2opc-build/
+/deps/sdk-state/
+target/

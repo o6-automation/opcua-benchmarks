@@ -18,13 +18,14 @@
 # Compare all five servers using 10 native C clients and scalar async Reads.
 # Usage: ./run-fixed-load.sh [new-database-path]
 # Environment overrides: BENCH_PYTHON, SAMPLES, ITERATIONS, WARMUP,
-# MAX_OUTSTANDING (per client: 100 = 1,000 total; 1000 = 10,000 total).
+# MAX_OUTSTANDING (per client: 100 = 1,000 total; 1000 = 10,000 total),
+# WITH_SDKS=1 (also Milo, S2OPC and gopcua: eight servers).
 # Each sample performs ITERATIONS calls per client, rather than running for
 # a fixed duration. Lower ITERATIONS if a client hits the runner's 120s timeout.
 set -euo pipefail
 
 if (( $# > 1 )) || [[ ${1:-} == --help || ${1:-} == -h ]]; then
-    head -n 7 "${BASH_SOURCE[0]}"
+    head -n 8 "${BASH_SOURCE[0]}"
     exit 0
 fi
 
@@ -34,6 +35,7 @@ samples=${SAMPLES:-3}
 iterations=${ITERATIONS:-100000}
 warmup=${WARMUP:-10000}
 max_outstanding=${MAX_OUTSTANDING:-100}
+with_sdks=${WITH_SDKS:-0}
 
 for setting in samples iterations warmup max_outstanding; do
     if [[ ! ${!setting} =~ ^[1-9][0-9]*$ ]]; then
@@ -60,18 +62,20 @@ fi
 
 cd -- "$repo_dir"
 run_name=five-sdks
+servers=(open62541 o6-python asyncua node-opcua ua-dotnet)
+build_flags=(--node --dotnet)
+if [[ $with_sdks == 1 ]]; then
+    run_name=eight-sdks
+    servers+=(milo s2opc gopcua)
+    build_flags+=(--sdks)
+fi
 printf 'Database: %s\n10 clients, %s outstanding per client, %s samples, %s calls/client/sample\n' \
     "$database" "$max_outstanding" "$samples" "$iterations"
 
-"$bench_python" -m bench.build --node --dotnet
+"$bench_python" -m bench.build "${build_flags[@]}"
 suite=("$bench_python" -m bench.throughput)
 "${suite[@]}" new "$database"
-"${suite[@]}" config "$database" pair \
-    open62541:open62541 \
-    open62541:o6-python \
-    open62541:asyncua \
-    open62541:node-opcua \
-    open62541:ua-dotnet
+"${suite[@]}" config "$database" pair "${servers[@]/#/open62541:}"
 "${suite[@]}" config "$database" operation read
 "${suite[@]}" config "$database" payload scalar
 "${suite[@]}" config "$database" security None
@@ -92,8 +96,8 @@ if (( sample_status != 0 )); then
 fi
 
 # The suite itself returns success even when individual configurations fail.
-# Check that all five servers actually supplied the requested samples.
-"$bench_python" - "$database" "$run_name" "$samples" <<'PY'
+# Check that every server actually supplied the requested samples.
+"$bench_python" - "$database" "$run_name" "$samples" "${#servers[@]}" <<'PY'
 from contextlib import closing
 import sys
 
@@ -103,10 +107,10 @@ with closing(BenchDB(sys.argv[1], "throughput", name=sys.argv[2])) as store:
     rows = list(store.results.values())
     complete = (
         not store.failures
-        and len(rows) == 5
+        and len(rows) == int(sys.argv[4])
         and all(len(row.get("runs", [])) == int(sys.argv[3]) for row in rows)
     )
     if not complete:
         raise SystemExit("Benchmark incomplete: inspect failures and sample counts in the report.")
-print("All five SDKs completed the requested samples.")
+print(f"All {sys.argv[4]} SDKs completed the requested samples.")
 PY
