@@ -4,8 +4,8 @@
   "v8": "13.6.233.17-node.53",
   "uv": "1.52.1",
   "openssl": "3.5.8",
-  "package": "2.186.0",
-  "source_commit": "f39357ba4864bc83f210b40c7257e92afb0fa0ea",
+  "package": "2.187.1",
+  "source_commit": "706db482c6f77cd5c7c1f98f9f7cf1c5841a0161",
   "archives": {
     "x86_64": "fd8e59d5a511510f6a298afb548f18c7d2b1be404d8b4a27d94fbe49f56cb2d6",
     "aarch64": "6ad1325edbdb5649c379b75a237147a666c95d4f9ae8d340fef2d1575d289ad2"

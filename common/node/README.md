@@ -2,7 +2,7 @@
 
 From the repository root, run `python -m bench.build --node`.
 The bootstrap supports Linux x64/arm64 and installs Node.js 24.21.0, npm
-11.19.0, and node-opcua 2.186.0. Archives are checksum-pinned in `toolchain.json`;
+11.19.0, and node-opcua 2.187.1. Archives are checksum-pinned in `toolchain.json`;
 `package-lock.json` pins the public npm dependency graph.
 
 The runtime and npm state stay under ignored `deps/` directories. Installation
