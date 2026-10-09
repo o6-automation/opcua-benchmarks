@@ -90,6 +90,10 @@ typedef struct O6_LimitsOptions {
      * anything > 1 means the binary fills one Read with N scalar nodes per
      * issue. */
     size_t batch_size;
+    /* Write only: the value written. 0 = an Int32 equal to the node id (the
+     * default), 1 = a String "value-<node id>", for servers whose nodes hold
+     * strings (--write-type string). */
+    int write_string;
 } O6_LimitsOptions;
 
 static inline uint64_t
@@ -124,7 +128,8 @@ o6_limits_usage(const char *program) {
             "Usage: %s [--endpoint URL] [--duration-ms N] [--warmup-ms N] "
             "[--timeout-ms N] [--grace-ms N] [--outstanding N] [--seed N] "
             "[--open-loop] [--target-rate N] "
-            "[--service S] [--nodes N] [--first-node-id N] [--batch-size N]\n",
+            "[--service S] [--nodes N] [--first-node-id N] [--batch-size N] "
+            "[--write-type int32|string]\n",
             program);
 }
 
@@ -172,6 +177,14 @@ o6_limits_parse_options(int argc, char **argv, O6_LimitsOptions *options) {
             options->first_node_id = (uint32_t)parsed;
         } else if(strcmp(argv[index], "--batch-size") == 0 && index + 1 < argc) {
             if(!o6_limits_parse_size(argv[++index], &options->batch_size))
+                return 0;
+        } else if(strcmp(argv[index], "--write-type") == 0 && index + 1 < argc) {
+            const char *type = argv[++index];
+            if(strcmp(type, "int32") == 0)
+                options->write_string = 0;
+            else if(strcmp(type, "string") == 0)
+                options->write_string = 1;
+            else
                 return 0;
         } else {
             return 0;

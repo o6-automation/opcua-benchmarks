@@ -88,7 +88,28 @@ typedef struct ClientContext {
      * batch, with the value payload (an Int32 equal to the node id) set
      * up once and reused on every issue. */
     UA_WriteValue *batch_write_values;
+    /* Write only: write a String "value-<node id>" instead of an Int32
+     * (--write-type string), for servers whose nodes hold strings. */
+    int write_string;
 } ClientContext;
+
+/* The value a Write sets on a node: an Int32 equal to the node's numeric
+ * identifier, or with --write-type string the String "value-<id>". The
+ * variant owns a copy of its value (UA_Variant_setScalarCopy). */
+static UA_StatusCode
+set_write_value(const ClientContext *context, UA_Variant *variant, uint32_t node_id) {
+    if(context->write_string) {
+        char text[32];
+        UA_String string;
+        snprintf(text, sizeof(text), "value-%u", (unsigned)node_id);
+        string = UA_STRING(text);
+        return UA_Variant_setScalarCopy(variant, &string, &UA_TYPES[UA_TYPES_STRING]);
+    }
+    {
+        UA_Int32 value = (UA_Int32)node_id;
+        return UA_Variant_setScalarCopy(variant, &value, &UA_TYPES[UA_TYPES_INT32]);
+    }
+}
 
 typedef struct PendingRead {
     ClientContext *context;
@@ -187,8 +208,11 @@ on_hammer_write(UA_Client *client, void *userdata, UA_UInt32 request_id,
     }
     status = response->responseHeader.serviceResult;
     if(status == UA_STATUSCODE_GOOD &&
-       (response->resultsSize == 0 || response->results[0] != UA_STATUSCODE_GOOD))
+       response->resultsSize == 0)
         status = UA_STATUSCODE_BADUNEXPECTEDERROR;
+    for(size_t i = 0; status == UA_STATUSCODE_GOOD && i < response->resultsSize; ++i)
+        if(response->results[i] != UA_STATUSCODE_GOOD)
+            status = UA_STATUSCODE_BADUNEXPECTEDERROR;
     account(context, status, pending->issue_ns);
     context->retired++;
     free(pending);
@@ -259,19 +283,53 @@ issue_one(ClientContext *context, uint64_t issue_ns) {
     pending->context = context;
     pending->issue_ns = issue_ns;
 
-    if(strcmp(context->service, O6_LIMITS_SERVICE_WRITE) == 0) {
+    if(strcmp(context->service, O6_LIMITS_SERVICE_WRITE) == 0 &&
+       context->batch_size > 1) {
+        UA_WriteRequest request;
+        /* Batched write: batch_size WriteValues on consecutive nodes
+         * first_node_id.., the value set_write_value gives, built once. */
+        if(!context->batch_write_values) {
+            context->batch_write_values = (UA_WriteValue *)calloc(
+                context->batch_size, sizeof(UA_WriteValue));
+            if(!context->batch_write_values) {
+                free(pending);
+                context->connection_broken = true;
+                return;
+            }
+            for(size_t i = 0; i < context->batch_size; ++i) {
+                UA_WriteValue *wv = &context->batch_write_values[i];
+                UA_WriteValue_init(wv);
+                wv->nodeId = UA_NODEID_NUMERIC(
+                    1, context->first_node_id + (uint32_t)(i % context->node_count));
+                wv->attributeId = UA_ATTRIBUTEID_VALUE;
+                wv->value.hasValue = true;
+                if(set_write_value(context, &wv->value.value,
+                                   wv->nodeId.identifier.numeric) != UA_STATUSCODE_GOOD) {
+                    free(pending);
+                    context->connection_broken = true;
+                    return;
+                }
+            }
+        }
+        UA_WriteRequest_init(&request);
+        request.nodesToWrite = context->batch_write_values;
+        request.nodesToWriteSize = context->batch_size;
+        sent = UA_Client_sendAsyncWriteRequest(
+            context->client, &request, on_hammer_write, pending, NULL);
+    } else if(strcmp(context->service, O6_LIMITS_SERVICE_WRITE) == 0) {
         /* Scalar write: one Int32 equal to the node's numeric identifier
          * (the same convention the throughput C client and the
          * Python asyncua/o6 clients use, so a Write run lands on the same
-         * values the rest of the rig produces). */
+         * values the rest of the rig produces), or a String with
+         * --write-type string. */
         UA_Variant variant;
-        UA_Int32 value;
         node_id = next_node_id(context);
-        value = (UA_Int32)node_id.identifier.numeric;
         UA_Variant_init(&variant);
-        UA_Variant_setScalar(&variant, &value, &UA_TYPES[UA_TYPES_INT32]);
-        sent = UA_Client_writeValueAttribute_async(
-            context->client, node_id, &variant, on_hammer_write, pending, NULL);
+        sent = set_write_value(context, &variant, node_id.identifier.numeric);
+        if(sent == UA_STATUSCODE_GOOD)
+            sent = UA_Client_writeValueAttribute_async(
+                context->client, node_id, &variant, on_hammer_write, pending, NULL);
+        UA_Variant_clear(&variant);
     } else if(strcmp(context->service, O6_LIMITS_SERVICE_READ_BATCH) == 0 ||
               strcmp(context->service, O6_LIMITS_SERVICE_READ_BATCH_100) == 0) {
         /* Batched Read: fill the scratch, post a UA_ReadRequest through
@@ -499,6 +557,7 @@ main(int argc, char **argv) {
     context.first_node_id = options.first_node_id;
     context.node_count = options.node_count;
     context.batch_size = options.batch_size;
+    context.write_string = options.write_string;
 
     context.client = UA_Client_new();
     if(!context.client)
