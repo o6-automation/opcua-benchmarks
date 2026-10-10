@@ -34,7 +34,7 @@ from common.bench_db import BenchDB
 from common.contract import SERVER_READY
 from common.histogram import BUCKETS, merge, percentile_ms
 from common.progress import Progress
-from common.workers import drain, port_in_use, read_until, teardown_server, wait_for_server
+from common.workers import drain, pin_to_cpus, port_in_use, read_until, teardown_server, wait_for_server
 from server_limits.run import server_command
 from server_capacity.options import OPTIONS
 from server_capacity.search import METHOD, search
@@ -208,6 +208,8 @@ def running_server(implementation, deadline, report=lambda phase: None):
         environment["O6_BENCHMARK_PKI_ROOT"] = pki
         try:
             report("starting server")
+            # Pinned before exec, like the other suites: a runtime that sizes its thread pools
+            # from its CPU affinity at startup (.NET, the JVM) then sees its share, not the machine.
             server = subprocess.Popen(
                 server_command(implementation, BINARY_DIR / "server"),
                 cwd=ROOT,
@@ -216,8 +218,8 @@ def running_server(implementation, deadline, report=lambda phase: None):
                 stderr=subprocess.STDOUT,
                 text=True,
                 start_new_session=True,
+                preexec_fn=pin_to_cpus(placement()["server"]),
             )
-            pin(server, placement()["server"])
             read_until(server, SERVER_READY, implementation, timeout_seconds=min(30, remaining(deadline)))
             reader = threading.Thread(target=drain, args=(server.stdout,), daemon=True)
             reader.start()
