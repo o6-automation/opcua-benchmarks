@@ -72,12 +72,18 @@ extend that limit.
 
 The script compares server SDKs in two scenarios:
 
-- **Reads:** Across all eight SDKs, ten native clients keep 100 scalar Read requests in flight each,
-  without encryption and with Basic256Sha256, to load the server and compare
-  throughput and encryption overhead.
+- **Reads:** Across all nine SDKs, including `node-opcua-fronts`, ten native
+  clients keep 100 scalar Read requests in flight each, without encryption and
+  with Basic256Sha256, to load the server and compare throughput and encryption
+  overhead.
 - **Subscriptions:** A linear sweep of monitored items uses 10 ms and 100 ms
   sampling with 1,000 ms publishing. Client-side progress shows how capacity
-  changes with sampling frequency across all eight SDKs.
+  changes with sampling frequency across all nine SDKs.
+
+Servers are pinned to one logical CPU, with clients on separate physical cores.
+The preset requires Linux and at least two available physical cores. Saved runs
+from before single-core pinning was enforced can still be plotted; start a new
+database to measure with the corrected CPU allocation.
 
 Start a fresh run or continue the latest saved run:
 

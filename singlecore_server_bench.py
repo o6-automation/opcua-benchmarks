@@ -19,12 +19,15 @@
 
 Compare server SDKs in two scenarios:
 
-- Reads: Across all eight SDKs, ten native clients keep 100 scalar Read requests in flight each,
+- Reads: Across all nine SDKs, ten native clients keep 100 scalar Read requests in flight each,
   without encryption and with Basic256Sha256, to load the server and compare
   throughput and encryption overhead.
 - Subscriptions: A linear sweep of monitored items uses 10 ms and 100 ms
   sampling with 1,000 ms publishing. Client-side progress shows how capacity
-  changes with sampling frequency across all eight SDKs.
+  changes with sampling frequency across all nine SDKs.
+
+Servers use one logical CPU; clients use separate physical cores.
+Requires Linux with at least two available physical cores.
 
 Run: python singlecore_server_bench.py
 Resume the latest saved run: python singlecore_server_bench.py --continue
@@ -54,9 +57,11 @@ from statistics import median
 import subprocess
 import sys
 
-SERVERS = ["open62541", "o6-python", "asyncua", "node-opcua", "ua-dotnet", "milo", "gopcua", "s2opc"]
+SERVERS = [
+    "open62541", "o6-python", "asyncua", "node-opcua", "node-opcua-fronts", "ua-dotnet", "milo", "gopcua", "s2opc"
+]
 SAMPLES = 3
-BUILD_FLAGS = ["--node", "--dotnet", "--milo", "--gopcua", "--s2opc"]
+BUILD_FLAGS = ["--node", "--node-opcua-fronts", "--dotnet", "--milo", "--gopcua", "--s2opc"]
 RUN_NAME = "singlecore-server"
 PLOT_DPI = 600
 CONFIG = {
@@ -67,6 +72,7 @@ CONFIG = {
         "security": ["None", "Basic256Sha256"],
         "mode": ["async"],
         "clients": [10],
+        "cpu_allocation": "singlecore",
         "max_outstanding": 100,  # per client
         "samples": SAMPLES,
         "iterations": 100000,
@@ -92,6 +98,7 @@ SDK_LABELS = {
     "o6-python": "o6\\Python (Python)",
     "asyncua": "asyncua (Python)",
     "node-opcua": "node-opcua (TypeScript)",
+    "node-opcua-fronts": "node-opcua fronts (TS)",
     "milo": "Milo (Java)",
     "gopcua": "gopcua (Go)",
     "s2opc": "S2OPC (C)",
@@ -102,6 +109,7 @@ SDK_COLORS = {
     "o6-python": "#007F8F",
     "asyncua": "#257153",
     "node-opcua": "#A86100",
+    "node-opcua-fronts": "#008300",
     "ua-dotnet": "#B6404C",
     "milo": "#7555A3",
     "gopcua": "#2878B5",
@@ -242,6 +250,8 @@ def read_throughput_results(connection, name: str) -> tuple[list[ThroughputResul
     for sdk in ("milo", "gopcua", "s2opc"):
         recorded = metadata.get(f"sdk_{sdk}", {})
         versions[sdk] = recorded.get("runtime_info", {}).get("sdk") or recorded.get("sdk", "").rsplit(" ", 1)[-1]
+    # Both Node variants use the same pinned installation recorded by this run.
+    versions["node-opcua-fronts"] = versions["node-opcua"]
     # Missing runtime versions stay unknown; today's installed SDKs may differ.
     return results, {sdk: str(version) for sdk, version in versions.items() if version}
 
@@ -418,13 +428,14 @@ def draw_throughput(results: list[ThroughputResult], versions: dict[str, str]):
     for spine in ("top", "right", "left"):
         ax.spines[spine].set_visible(False)
     # Keep versions below the chart so they cannot cover bars, including when
-    # plotting a partial run or all eight SDKs.
+    # plotting a partial run or all nine SDKs.
     legend_font = title_font.copy()
     legend_font.set_size(10.5)
     label_props = {"size": 10.5, "color": INK}
     columns = []
-    for start in range(0, len(sdks), 4):
-        column = sdks[start : start + 4]
+    rows_per_column = max(4, (len(sdks) + 1) // 2)
+    for start in range(0, len(sdks), rows_per_column):
+        column = sdks[start : start + rows_per_column]
         names = VPacker(
             children=[TextArea(SDK_LABELS[sdk].split(" (")[0], textprops=label_props) for sdk in column],
             align="left",
@@ -755,6 +766,8 @@ def main(argv=None):
             if RUN_NAME not in store.benchmark_names():
                 raise ValueError("No configured run found; start again without --continue.")
             uniform, _ = store.get_config("throughput")
+            if uniform.get("cpu_allocation") != "singlecore":
+                raise ValueError("Saved run does not use single-core CPU allocation; start a fresh run in a new database.")
             samples = uniform.get("samples") or SAMPLES
         print(f"Database: {database}", flush=True)
         run("bench.build", *BUILD_FLAGS)

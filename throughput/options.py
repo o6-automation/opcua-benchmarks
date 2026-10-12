@@ -109,6 +109,15 @@ OPTIONS: dict[str, ConfigOption] = {
             "clients and shows whether throughput holds as load is added."
         ),
     ),
+    "cpu_allocation": ConfigOption(
+        kind="uniform",
+        default="split",
+        coerce=uniform(one_of("split", "singlecore")),
+        help=(
+            "'split' divides logical CPUs between server and clients. 'singlecore' pins the server to one "
+            "allowed CPU and clients to other physical cores (Linux, at least two physical cores required)."
+        ),
+    ),
     "payload": ConfigOption(
         kind="varying",
         default=[

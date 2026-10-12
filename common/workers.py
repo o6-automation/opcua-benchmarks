@@ -26,14 +26,15 @@ import time
 import queue
 import threading
 from collections.abc import Callable, Iterable
+from pathlib import Path
 
 # Where an OPC UA server listens unless it is told otherwise, and so where
 # every runner in this repository puts the one it starts.
 DEFAULT_PORT = 4840
 
 
-def pin_to_cpus(cpu_ids: Iterable[int]) -> Callable[[], None] | None:
-    """Return a pre-exec CPU-affinity callback; unavailable or invalid affinity is ignored."""
+def pin_to_cpus(cpu_ids: Iterable[int], *, strict: bool = False) -> Callable[[], None] | None:
+    """Return a pre-exec CPU-affinity callback; strict mode propagates pinning failures."""
     cpu_set = frozenset(int(cpu) for cpu in cpu_ids)
     if not cpu_set:
         return None
@@ -44,6 +45,8 @@ def pin_to_cpus(cpu_ids: Iterable[int]) -> Callable[[], None] | None:
         try:
             os.sched_setaffinity(0, cpu_set)
         except OSError:
+            if strict:
+                raise
             # The set may be empty or contain CPUs the kernel does not
             # know about on this machine — best-effort, just like the
             # oom_score_adj write in :mod:`common.oom`.
@@ -52,8 +55,22 @@ def pin_to_cpus(cpu_ids: Iterable[int]) -> Callable[[], None] | None:
     return pin
 
 
-def partition_cpus(total: int) -> tuple[set[int], set[int]]:
-    """Split CPU IDs into disjoint server/client sets, giving the server the extra CPU."""
+def partition_cpus(total: int, *, single_core: bool = False) -> tuple[set[int], set[int]]:
+    """Split CPUs equally, or reserve one allowed server CPU and exclude its SMT siblings from clients."""
+    if single_core:
+        if not hasattr(os, "sched_getaffinity"):
+            raise RuntimeError("Single-core CPU allocation requires Linux CPU affinity support")
+        allowed = set(os.sched_getaffinity(0))
+        server_cpu = min(allowed)
+        topology = Path(f"/sys/devices/system/cpu/cpu{server_cpu}/topology/thread_siblings_list")
+        siblings = set()
+        for group in topology.read_text().strip().split(","):
+            first, separator, last = group.partition("-")
+            siblings.update(range(int(first), int(last) + 1) if separator else (int(first),))
+        clients = allowed - siblings - {server_cpu}
+        if not clients:
+            raise RuntimeError("Single-core CPU allocation requires at least two available physical cores")
+        return {server_cpu}, clients
     if total <= 0:
         return set(), set()
     server_count = (total + 1) // 2

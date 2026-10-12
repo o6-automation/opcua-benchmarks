@@ -924,6 +924,13 @@ def cmd_sample(args: argparse.Namespace) -> int:
         return 1
 
     pairs = [pair_to_tuple(pair) for pair in varying.get("pair", [])]
+    single_core = uniform.get("cpu_allocation", "split") == "singlecore"
+    try:
+        server_cpus, client_cpus = partition_cpus(os.cpu_count() or 1, single_core=single_core)
+    except (OSError, ValueError, RuntimeError) as error:
+        print(f"CPU allocation failed: {error}", file=sys.stderr)
+        return 1
+    store.metadata["cpu_affinity"] = {"server": sorted(server_cpus), "clients": sorted(client_cpus)}
     dotnet_roles = ({"client"} if any(c == "ua-dotnet" for c, _ in pairs) else set()) | (
         {"server"} if any(s == "ua-dotnet" for _, s in pairs) else set()
     )
@@ -1047,13 +1054,10 @@ def cmd_sample(args: argparse.Namespace) -> int:
     # configuration asks for.
     array_sizes = exposed_arrays(varying.get("payload") or [])
 
-    # CPU-set pinning: server on one half of the machine's
-    # logical CPUs, clients on the other, so neither party ever preempts
-    # the other. ``pin_to_cpus`` returns ``None`` on macOS/Windows and
-    # the worker falls through to the unpinned ``child_limits`` path.
-    server_cpus, client_cpus = partition_cpus(os.cpu_count() or 1)
-    server_preexec_factory = pin_to_cpus(server_cpus)
-    client_preexec_factory = pin_to_cpus(client_cpus)
+    # Single-core measurements must fail if the requested pinning cannot be applied.
+    server_preexec_factory = pin_to_cpus(server_cpus, strict=single_core)
+    client_preexec_factory = pin_to_cpus(client_cpus, strict=single_core)
+    print(f":: CPU affinity: server={sorted(server_cpus)}, clients={sorted(client_cpus)}", file=sys.stderr)
 
     # The matrix walk is a full cartesian product; the per-suite
     # ``applicable()`` predicate decides which cells produce a result row.
