@@ -44,20 +44,15 @@ import org.eclipse.milo.opcua.sdk.server.OpcUaServerConfigLimits;
 import org.eclipse.milo.opcua.sdk.server.SimpleAddressSpaceFilter;
 import org.eclipse.milo.opcua.sdk.server.EndpointConfig;
 import org.eclipse.milo.opcua.sdk.server.identity.AnonymousIdentityValidator;
-import org.eclipse.milo.opcua.sdk.server.items.DataItem;
-import org.eclipse.milo.opcua.sdk.server.items.MonitoredItem;
 import org.eclipse.milo.opcua.sdk.server.nodes.UaVariableNode;
-import org.eclipse.milo.opcua.sdk.server.util.SubscriptionModel;
+import org.eclipse.milo.opcua.sdk.server.sampling.SamplingManagerConfig;
 import org.eclipse.milo.opcua.stack.core.NodeIds;
 import org.eclipse.milo.opcua.stack.core.channel.EncodingLimits;
-import org.eclipse.milo.opcua.stack.core.security.CertificateStore;
 import org.eclipse.milo.opcua.stack.core.security.CertificateValidator;
-import org.eclipse.milo.opcua.stack.core.security.DefaultApplicationGroup;
+import org.eclipse.milo.opcua.stack.core.security.DefaultCertificateGroup;
 import org.eclipse.milo.opcua.stack.core.security.DefaultCertificateManager;
 import org.eclipse.milo.opcua.stack.core.security.MemoryCertificateQuarantine;
-import org.eclipse.milo.opcua.stack.core.security.MemoryCertificateStore;
 import org.eclipse.milo.opcua.stack.core.security.MemoryTrustListManager;
-import org.eclipse.milo.opcua.stack.core.security.RsaSha256CertificateFactory;
 import org.eclipse.milo.opcua.stack.core.security.SecurityPolicy;
 import org.eclipse.milo.opcua.stack.core.transport.TransportProfile;
 import org.eclipse.milo.opcua.stack.core.types.builtin.DataValue;
@@ -204,12 +199,9 @@ public final class BenchmarkServer {
   static final class Values extends ManagedAddressSpaceFragmentWithLifecycle {
     private final AddressSpaceFilter filter =
         SimpleAddressSpaceFilter.create(getNodeManager()::containsNode);
-    private final SubscriptionModel subscriptions;
 
     Values(OpcUaServer server, List<Integer> arraySizes) {
       super(server, server.getServerNamespace());
-      subscriptions = new SubscriptionModel(server, this);
-      getLifecycleManager().addLifecycle(subscriptions);
       getLifecycleManager().addStartupTask(() -> addNodes(arraySizes));
     }
 
@@ -260,24 +252,17 @@ public final class BenchmarkServer {
     }
 
     @Override
-    public void onDataItemsCreated(List<DataItem> dataItems) {
-      subscriptions.onDataItemsCreated(dataItems);
+    protected SamplingManagerConfig samplingManagerConfig() {
+      return BenchmarkServer.samplingManagerConfig();
     }
+  }
 
-    @Override
-    public void onDataItemsModified(List<DataItem> dataItems) {
-      subscriptions.onDataItemsModified(dataItems);
-    }
-
-    @Override
-    public void onDataItemsDeleted(List<DataItem> dataItems) {
-      subscriptions.onDataItemsDeleted(dataItems);
-    }
-
-    @Override
-    public void onMonitoringModeChanged(List<MonitoredItem> monitoredItems) {
-      subscriptions.onMonitoringModeChanged(monitoredItems);
-    }
+  /**
+   * Milo 1.2 rounds sampling intervals up to multiples of 25 ms by default. The subscription suite
+   * requires the requested interval, so sample at it, as Milo 1.1 did.
+   */
+  static SamplingManagerConfig samplingManagerConfig() {
+    return SamplingManagerConfig.defaults().withBucketMillis(0);
   }
 
   /**
@@ -295,30 +280,15 @@ public final class BenchmarkServer {
   static OpcUaServer createServer(Options options, OpcUaServerConfigLimits limits) throws Exception {
     X509Certificate[] chain = new X509Certificate[1];
     KeyPair keyPair = identity(options, chain);
-    var store = new MemoryCertificateStore();
-    store.set(
-        NodeIds.RsaSha256ApplicationCertificateType,
-        new CertificateStore.Entry(keyPair.getPrivate(), chain));
-    var factory =
-        new RsaSha256CertificateFactory() {
-          @Override
-          protected KeyPair createRsaSha256KeyPair() {
-            return keyPair;
-          }
-
-          @Override
-          protected X509Certificate[] createRsaSha256CertificateChain(KeyPair pair) {
-            return chain;
-          }
-        };
     // Every other server in this repository accepts any client certificate.
     var group =
-        DefaultApplicationGroup.createAndInitialize(
+        DefaultCertificateGroup.forIdentity(
+            keyPair,
+            chain,
             new MemoryTrustListManager(),
-            store,
-            factory,
+            new MemoryCertificateQuarantine(),
             new CertificateValidator.InsecureCertificateValidator());
-    var certificates = new DefaultCertificateManager(new MemoryCertificateQuarantine(), group);
+    var certificates = new DefaultCertificateManager(group);
 
     boolean secure = options.security.equals("Basic256Sha256");
     Set<EndpointConfig> endpoints = new LinkedHashSet<>();

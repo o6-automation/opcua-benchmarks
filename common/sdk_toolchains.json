@@ -1,6 +1,6 @@
 {
   "milo": {
-    "sdk": "org.eclipse.milo:milo-sdk-server 1.1.8",
+    "sdk": "org.eclipse.milo:milo-sdk-server 1.2.0-RC1",
     "archives": {
       "jdk": {
         "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/OpenJDK21U-jdk_x64_linux_hotspot_21.0.12.1_1.tar.gz",

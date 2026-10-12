@@ -23,7 +23,6 @@ import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.io.PrintStream;
 import java.util.Arrays;
-import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import org.eclipse.milo.opcua.sdk.core.AccessLevel;
@@ -33,12 +32,10 @@ import org.eclipse.milo.opcua.sdk.server.ManagedAddressSpaceFragmentWithLifecycl
 import org.eclipse.milo.opcua.sdk.server.OpcUaServer;
 import org.eclipse.milo.opcua.sdk.server.OpcUaServerConfigLimits;
 import org.eclipse.milo.opcua.sdk.server.SimpleAddressSpaceFilter;
-import org.eclipse.milo.opcua.sdk.server.items.DataItem;
-import org.eclipse.milo.opcua.sdk.server.items.MonitoredItem;
 import org.eclipse.milo.opcua.sdk.server.nodes.UaVariableNode;
 import org.eclipse.milo.opcua.sdk.server.nodes.filters.AttributeFilter;
 import org.eclipse.milo.opcua.sdk.server.nodes.filters.AttributeFilterContext;
-import org.eclipse.milo.opcua.sdk.server.util.SubscriptionModel;
+import org.eclipse.milo.opcua.sdk.server.sampling.SamplingManagerConfig;
 import org.eclipse.milo.opcua.stack.core.AttributeId;
 import org.eclipse.milo.opcua.stack.core.NodeIds;
 import org.eclipse.milo.opcua.stack.core.UaException;
@@ -115,12 +112,9 @@ public final class CounterServer {
   private final class Counters extends ManagedAddressSpaceFragmentWithLifecycle {
     private final AddressSpaceFilter filter =
         SimpleAddressSpaceFilter.create(getNodeManager()::containsNode);
-    private final SubscriptionModel subscriptions;
 
     Counters(OpcUaServer server) {
       super(server, server.getServerNamespace());
-      subscriptions = new SubscriptionModel(server, this);
-      getLifecycleManager().addLifecycle(subscriptions);
       getLifecycleManager().addStartupTask(this::addNodes);
     }
 
@@ -130,7 +124,7 @@ public final class CounterServer {
       for (int i = 0; i < values.length; i++) {
         final int index = i;
         String name = "Counter" + i;
-        UaVariableNode node = UaVariableNode.builder(getNodeContext())
+        UaVariableNode node = new UaVariableNode.UaVariableNodeBuilder(getNodeContext())
             .setNodeId(new NodeId(ns, uint(i + 1)))
             .setBrowseName(new QualifiedName(ns, name))
             .setDisplayName(LocalizedText.english(name))
@@ -159,10 +153,7 @@ public final class CounterServer {
     }
 
     @Override public AddressSpaceFilter getFilter() { return filter; }
-    @Override public void onDataItemsCreated(List<DataItem> items) { subscriptions.onDataItemsCreated(items); }
-    @Override public void onDataItemsModified(List<DataItem> items) { subscriptions.onDataItemsModified(items); }
-    @Override public void onDataItemsDeleted(List<DataItem> items) { subscriptions.onDataItemsDeleted(items); }
-    @Override public void onMonitoringModeChanged(List<MonitoredItem> items) { subscriptions.onMonitoringModeChanged(items); }
+    @Override protected SamplingManagerConfig samplingManagerConfig() { return BenchmarkServer.samplingManagerConfig(); }
   }
 
   private static void run(String[] args) throws Exception {
