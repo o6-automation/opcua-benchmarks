@@ -210,8 +210,8 @@ def running_server(implementation, deadline, report=lambda phase: None):
         environment["O6_BENCHMARK_PKI_ROOT"] = pki
         try:
             report("starting server")
-            # Pinned before exec, like the other suites: a runtime that sizes its thread pools
-            # from its CPU affinity at startup (.NET, the JVM) then sees its share, not the machine.
+            # Pinned before exec, like the other suites: a runtime that sizes its threads from its
+            # CPU affinity at startup (.NET, the JVM, node-opcua fronts) sees its share, not the machine.
             server = subprocess.Popen(
                 server_command(implementation, BINARY_DIR / "server"),
                 cwd=ROOT,

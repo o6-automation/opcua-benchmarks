@@ -49,7 +49,7 @@ _ALL_PAIRS = _DEFAULT_PAIRS | frozenset(
     # The optional server-only SDKs (common/sdk_workers.py), against every client.
     (client, server)
     for client in ("open62541", "o6-python", "asyncua", "ua-dotnet", "node-opcua")
-    for server in ("milo", "s2opc", "gopcua")
+    for server in ("milo", "s2opc", "gopcua", "node-opcua-fronts")
 )
 _SECURITY_POLICIES: tuple[str, ...] = ("None", "Basic256Sha256")
 _PAIR_STRINGS: tuple[str, ...] = tuple(sorted(f"{client}:{server}" for client, server in _ALL_PAIRS))

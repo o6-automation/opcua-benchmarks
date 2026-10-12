@@ -14,7 +14,7 @@
 #
 #    Copyright 2026 (c) Sterfive (Author: Etienne Rossignon)
 
-"""Optional server-only SDK workers: Eclipse Milo, S2OPC and gopcua.
+"""Optional server-only SDK workers: Eclipse Milo, S2OPC, gopcua, and node-opcua with front threads.
 
 Each one is a single server program under ``common/<sdk>/`` that exposes the
 address space of ``common/servers/open62541_server.c`` and takes the same
@@ -23,6 +23,8 @@ They are measured against the suites' existing clients; none of them is a
 client implementation. Toolchains are pinned in ``common/sdk_toolchains.json``
 and installed under ``deps/`` by ``python -m bench.build`` with ``--milo``,
 ``--s2opc`` or ``--gopcua``.
+node-opcua-fronts has no toolchain of its own: it runs ``common/node-fronts/``
+on the stock node-opcua worker's pinned Node.js and package (``--node``).
 """
 
 from __future__ import annotations
@@ -31,6 +33,7 @@ import hashlib
 import json
 import os
 import subprocess
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -64,6 +67,9 @@ SDKS: dict[str, Sdk] = {
         Sdk("milo", "Eclipse Milo (Java)", ROOT / "common/milo", True),
         Sdk("s2opc", "S2OPC (C)", ROOT / "common/s2opc", False),
         Sdk("gopcua", "gopcua (Go)", ROOT / "common/gopcua", True),
+        # The stock node-opcua package served by FrontThreadEngine: one front thread per CPU
+        # of the server's share but one, left to the engine (common/node-fronts/server.mjs).
+        Sdk("node-opcua-fronts", "node-opcua fronts (Node.js, CPU-1 threads)", ROOT / "common/node-fronts", True),
     )
 }
 NAMES: tuple[str, ...] = tuple(SDKS)
@@ -74,6 +80,7 @@ COLORS: dict[str, tuple[str, str]] = {
     "milo": ("#e87ba4", "#d55181"),
     "s2opc": ("#eda100", "#c98500"),
     "gopcua": ("#4a3aa7", "#9085e9"),
+    "node-opcua-fronts": ("#008300", "#5fb85f"),
 }
 
 
@@ -85,6 +92,13 @@ def _memory_share(memory_bytes: int) -> int:
 
 def environment(name: str, memory_bytes: int = 0, base: dict[str, str] | None = None) -> dict[str, str]:
     """Remove ambient runtime tuning and point each toolchain at its pinned state."""
+    if name == "node-opcua-fronts":
+        from common import node_workers
+
+        env = node_workers.environment(base)
+        # The stock worker's security module wants a runner-owned PKI root; not every suite sets one.
+        env.setdefault("O6_BENCHMARK_PKI_ROOT", tempfile.mkdtemp(prefix="o6-node-fronts-pki-"))
+        return env
     env = (os.environ if base is None else base).copy()
     for key in list(env):
         if key.startswith(("JAVA_", "_JAVA_", "JDK_", "GO")) or key in {"CLASSPATH", "MAVEN_OPTS"}:
@@ -108,6 +122,11 @@ def command(name: str, memory_bytes: int = 0) -> list[str]:
             f"{sdk.output / 'server.jar'}{os.pathsep}{sdk.output / 'lib'}/*",
             "o6.benchmark.BenchmarkServer",
         ]
+    if name == "node-opcua-fronts":
+        from common import node_workers
+
+        heap = [f"--max-old-space-size={max(256, _memory_share(memory_bytes) // 2 // 1024**2)}"] if memory_bytes else []
+        return [str(node_workers.NODE), *heap, str(sdk.source / "server.mjs")]
     if name == "s2opc":
         return [str(sdk.output / "server"), "--nodeset", str(sdk.output / "base_nodeset.xml")]
     return [str(sdk.output / "server")]
@@ -138,6 +157,9 @@ def input_fingerprint(name: str) -> str:
     sdk = SDKS[name]
     digest = hashlib.sha256(json.dumps(PINS[name], sort_keys=True).encode())
     files = [Path(__file__), ROOT / "bench/build_sdks.py", ROOT / "common/contract.h"]
+    if name == "node-opcua-fronts":
+        # it runs on the stock worker's helper modules and locked package
+        files += list((ROOT / "common/node").glob("*.mjs")) + [ROOT / "common/node/package-lock.json"]
     files += [
         path
         for path in sdk.source.rglob("*")

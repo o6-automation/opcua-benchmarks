@@ -61,6 +61,7 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
         ("milo", "Eclipse Milo (pinned JDK and Maven)"),
         ("s2opc", "S2OPC (pinned mbedtls and expat)"),
         ("gopcua", "gopcua (pinned Go)"),
+        ("node-opcua-fronts", "node-opcua with CPU-1 front threads (needs --node)"),
     ):
         parser.add_argument(f"--{name}", action="store_true", help=f"also build the optional {label} workers")
     return parser.parse_args(argv)

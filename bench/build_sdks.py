@@ -172,10 +172,22 @@ def build_s2opc(verbose: bool) -> None:
     shutil.rmtree(cmake, ignore_errors=True)
 
 
+def build_node_opcua_fronts(verbose: bool) -> None:
+    """Nothing to compile: check that the stock install (--node) serves front threads, and record its version."""
+    from common import node_workers
+
+    node_workers.preflight({"server"}, "throughput")
+    probe = "import('node-opcua').then(m => { if (!m.FrontThreadEngine) process.exit(3); })"
+    run([str(node_workers.NODE), "-e", probe], cwd=node_workers.SOURCE, env=node_workers.environment(), verbose=verbose)
+    package = json.loads((node_workers.SOURCE / "toolchain.json").read_text())["package"]
+    (workers.SDKS["node-opcua-fronts"].output / "node-opcua.json").write_text(json.dumps({"node-opcua": package}) + "\n")
+
+
 BUILDERS = {
     "milo": build_milo,
     "s2opc": build_s2opc,
     "gopcua": build_gopcua,
+    "node-opcua-fronts": build_node_opcua_fronts,
 }
 
 

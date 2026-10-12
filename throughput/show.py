@@ -178,7 +178,7 @@ IMPL_LABELS = {
     "o6-python": "o6\\Python",
     "asyncua": "asyncua",
     "ua-dotnet": "OPC Foundation (.NET)",
-    "node-opcua": "node-opcua (Node.js)",
+    "node-opcua": "node-opcua (Node.js, single thread)",
     **SDK_LABELS,
 }
 

@@ -31,7 +31,7 @@ from common.options import (
 
 
 _IMPLEMENTATIONS: tuple[str, ...] = (
-    "open62541", "o6-python", "asyncua", "ua-dotnet", "node-opcua", "milo", "s2opc", "gopcua"
+    "open62541", "o6-python", "asyncua", "ua-dotnet", "node-opcua", "milo", "s2opc", "gopcua", "node-opcua-fronts"
 )
 _MIN_SAMPLES = 7
 _SAMPLES_DEFAULT = 7

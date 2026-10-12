@@ -41,7 +41,7 @@ IMPLEMENTATION_LABELS = {
     "o6-python": "o6\\Python",
     "asyncua": "asyncua",
     "ua-dotnet": "OPC Foundation (.NET)",
-    "node-opcua": "node-opcua (Node.js)",
+    "node-opcua": "node-opcua (Node.js, single thread)",
     **SDK_LABELS,
 }
 
@@ -538,7 +538,7 @@ CSS = """
   --surface: #fcfcfb; --plane: #f9f9f7; --primary: #0b0b0b; --secondary: #52514e;
   --muted: #898781; --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11,11,11,0.10);
   --open62541: #2a78d6; --o6-python: #eb6834; --asyncua: #1baf7a; --ua-dotnet: #663399; --node-opcua: #007f86;
-  --milo: #e87ba4; --s2opc: #eda100; --gopcua: #4a3aa7;
+  --milo: #e87ba4; --s2opc: #eda100; --gopcua: #4a3aa7; --node-opcua-fronts: #008300;
   --good: #0ca30c; --critical: #d03b3b;
 }
 @media (prefers-color-scheme: dark) {
@@ -547,7 +547,7 @@ CSS = """
     --surface: #1a1a19; --plane: #0d0d0d; --primary: #ffffff; --secondary: #c3c2b7;
     --muted: #898781; --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
     --open62541: #3987e5; --o6-python: #d95926; --asyncua: #199e70; --ua-dotnet: #bb88ee; --node-opcua: #44bbbb;
-    --milo: #d55181; --s2opc: #c98500; --gopcua: #9085e9;
+    --milo: #d55181; --s2opc: #c98500; --gopcua: #9085e9; --node-opcua-fronts: #5fb85f;
     --good: #0ca30c; --critical: #d03b3b;
   }
 }
@@ -556,7 +556,7 @@ CSS = """
   --surface: #1a1a19; --plane: #0d0d0d; --primary: #ffffff; --secondary: #c3c2b7;
   --muted: #898781; --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
   --open62541: #3987e5; --o6-python: #d95926; --asyncua: #199e70; --ua-dotnet: #bb88ee; --node-opcua: #44bbbb;
-  --milo: #d55181; --s2opc: #c98500; --gopcua: #9085e9;
+  --milo: #d55181; --s2opc: #c98500; --gopcua: #9085e9; --node-opcua-fronts: #5fb85f;
   --good: #0ca30c; --critical: #d03b3b;
 }
 html, body { margin: 0; padding: 0; }

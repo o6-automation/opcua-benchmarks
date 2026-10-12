@@ -1148,7 +1148,9 @@ def cmd_sample(args: argparse.Namespace) -> int:
 
     def record_server_memory():
         watch = getattr(server, "node_memory_watch", None)
-        if watch is not None:
+        # node-opcua-fronts runs on the same Node.js, so it is watched too, but only the
+        # single-thread node-opcua row has a diagnostics section to record the peak in.
+        if watch is not None and "node_opcua_diagnostics" in store.metadata:
             peaks = store.metadata["node_opcua_diagnostics"]["server_rss_peaks"]
             key = str(current_sig)
             peaks[key] = max(peaks.get(key, 0), watch.peak)

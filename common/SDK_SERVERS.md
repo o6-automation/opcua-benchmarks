@@ -8,9 +8,11 @@ existing clients:
 | `milo` | Eclipse Milo 1.1.8 (`milo-sdk-server`) | Java, Temurin JDK 21.0.12.1, Maven 3.9.16 | `common/milo/` |
 | `s2opc` | S2OPC Toolkit 1.7.3 | C, mbedtls 3.6.7, expat 2.9.0 | `common/s2opc/` |
 | `gopcua` | gopcua v0.9.1 (`github.com/gopcua/opcua/server`) | Go 1.27.1 | `common/gopcua/` |
+| `node-opcua-fronts` | node-opcua `FrontThreadEngine`, the package of `common/node` | Node.js of `common/node` (`--node` first) | `common/node-fronts/` |
 
 From the repository root, run `python -m bench.build` with `--milo`, `--s2opc`
-or `--gopcua`. Combine these flags to build multiple SDKs. The bootstrap supports Linux
+or `--gopcua`, or use `--node --node-opcua-fronts` for the front-thread variant.
+Combine these flags to build multiple SDKs. The bootstrap supports Linux
 x86_64. Archives are checksum-pinned in `common/sdk_toolchains.json`; Go
 dependencies are pinned by `go.sum`. Toolchains, caches
 and the S2OPC libraries stay under ignored `deps/` directories, and sampling
@@ -50,6 +52,13 @@ SDK-specific notes, which a reader of the results should know:
   stores whatever it is sent. The benchmark clients always write the declared
   Int32 shape, so this changes no measured path, but the other servers check
   the type and gopcua does not. Its `GOMEMLIMIT` is set from the memory share.
+- **node-opcua-fronts** is the same node-opcua package as the `node-opcua`
+  row, served by `FrontThreadEngine` instead of one `OPCUAServer` thread: the
+  main thread is the engine (it owns the compact store and applies every
+  Write), and one front thread per CPU of the server's share but one listens on
+  the same port (SO_REUSEPORT). Linux spreads connections over the fronts by
+  hash, so a single-client case uses one front. `O6_NODE_FRONTS` overrides the
+  count; the server logs the count it used.
 
 async-opcua (Rust, the maintained successor of the `opcua` crate) was
 tried and left out: under SecurityPolicy None it returns a null server nonce
