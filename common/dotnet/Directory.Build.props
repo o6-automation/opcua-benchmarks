@@ -25,5 +25,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
     <Deterministic>true</Deterministic>
     <RollForward>Disable</RollForward>
     <RuntimeFrameworkVersion>10.0.12</RuntimeFrameworkVersion>
+    <!-- Avoids the low-CPU stalls seen with workstation GC under deep request pipelines. -->
+    <ServerGarbageCollection>true</ServerGarbageCollection>
   </PropertyGroup>
 </Project>

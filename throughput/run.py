@@ -104,6 +104,10 @@ BYTES_PER_VALUE = 4
 # This is the sizing policy :mod:`common.oom` deliberately leaves to the runner
 # — see :func:`worker_address_space` for how a share is cut from it.
 MEMORY_BUDGET_FRACTION = 0.6
+# Request-queue slots UA-.NETStandard 2.0 keeps for its bootstrap, reconnect, and
+# control reserves (Balanced resource isolation, one each). The runner adds them
+# so the whole client pipeline still fits in the shared part of the queue.
+DOTNET_QUEUE_RESERVED_SLOTS = 3
 
 
 def megabytes_per_second(values: int, elapsed_ns: int) -> float:
@@ -1102,7 +1106,8 @@ def cmd_sample(args: argparse.Namespace) -> int:
         if "server" in dotnet_roles:
             diagnostics["max_queued_request_count"] = max(
                 200,
-                widest_client_count * (int(uniform["max_outstanding"]) if "async" in varying["mode"] else 1),
+                widest_client_count * (int(uniform["max_outstanding"]) if "async" in varying["mode"] else 1)
+                + DOTNET_QUEUE_RESERVED_SLOTS,
             )
         try:
             runtime_env = dotnet_workers.environment(per_process_bytes)
