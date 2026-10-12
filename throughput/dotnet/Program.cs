@@ -25,22 +25,22 @@ try
     var options = new WorkerOptions(args);
     if (options.RuntimeInfo) { RuntimeInfo.Print(options); return 0; }
     using var pki = new PkiDirectory();
-    var configuration = Security.Configuration(options, false, pki.Path);
+    var configuration = await Security.ConfigurationAsync(options, false, pki.Path);
     await configuration.ValidateAsync(ApplicationType.Client);
     string policy = options.Security == "None" ? SecurityPolicies.None : SecurityPolicies.Basic256Sha256;
     var mode = options.Security == "None" ? MessageSecurityMode.None : MessageSecurityMode.SignAndEncrypt;
     using var discovery = await DiscoveryClient.CreateAsync(configuration, new Uri(options.Endpoint), EndpointConfiguration.Create(configuration));
-    var endpoints = await discovery.GetEndpointsAsync(null);
-    var endpoint = endpoints.FirstOrDefault(candidate => candidate.SecurityPolicyUri == policy && candidate.SecurityMode == mode
-        && new Uri(candidate.EndpointUrl).Scheme == "opc.tcp")
+    var endpoints = await discovery.GetEndpointsAsync(default);
+    var endpoint = (endpoints.ToArray() ?? []).FirstOrDefault(candidate => candidate.SecurityPolicyUri == policy && candidate.SecurityMode == mode
+        && candidate.EndpointUrl is string url && new Uri(url).Scheme == "opc.tcp")
         ?? throw new InvalidOperationException("Server does not offer the requested security policy and mode");
     // Use the requested host, as CoreClientUtils does, while retaining certificate
     // domain and application-URI validation during session creation.
     var address = new Uri(options.Endpoint);
-    endpoint.EndpointUrl = new UriBuilder(endpoint.EndpointUrl) { Host = address.Host, Port = address.Port }.ToString();
+    endpoint.EndpointUrl = new UriBuilder(endpoint.EndpointUrl!) { Host = address.Host, Port = address.Port }.ToString();
     var configuredEndpoint = new ConfiguredEndpoint(null, endpoint, EndpointConfiguration.Create(configuration));
     using var session = await new DefaultSessionFactory(Security.Telemetry).CreateAsync(configuration,
-        configuredEndpoint, false, true, "benchmark", 60_000, new UserIdentity(), null);
+        configuredEndpoint, false, true, "benchmark", 60_000, new UserIdentity(), default);
     session.KeepAliveInterval = Contract.RequestTimeout;
     session.OperationTimeout = Contract.RequestTimeout;
     Console.Error.WriteLine($"endpoint: {endpoint.SecurityPolicyUri} {endpoint.SecurityMode}");

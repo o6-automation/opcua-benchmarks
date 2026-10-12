@@ -21,6 +21,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
   <ItemGroup>
     <Compile Include="../../../subscription/DotnetWorker.cs" Link="CounterWorker.cs" />
     <ProjectReference Include="../Benchmark.Common/Benchmark.Common.csproj" />
-    <ProjectReference Include="../../../deps/ua-dotnet/Libraries/Opc.Ua.Server/Opc.Ua.Server.csproj" />
+    <PackageReference Include="OPCFoundation.NetStandard.Opc.Ua.Server" />
   </ItemGroup>
 </Project>

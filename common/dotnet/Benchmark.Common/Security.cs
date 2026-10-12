@@ -17,6 +17,7 @@
 using System.Diagnostics;
 using System.Diagnostics.Metrics;
 using System.Net;
+using System.Reflection;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using Microsoft.Extensions.Logging;
@@ -30,6 +31,8 @@ public sealed class QuietTelemetry : ITelemetryContext
     public ILoggerFactory LoggerFactory => NullLoggerFactory.Instance;
     public ActivitySource ActivitySource { get; } = new("Benchmark");
     public Meter CreateMeter() => new("Benchmark");
+    public Meter CreateMeter(Assembly assembly) => CreateMeter();
+    public ActivitySource GetActivitySource(Assembly assembly) => ActivitySource;
 }
 
 public static class Security
@@ -58,13 +61,23 @@ public static class Security
         return request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddDays(1));
     }
 
-    public static ApplicationConfiguration Configuration(WorkerOptions options, bool server, string pkiPath)
+    public static async Task<ApplicationConfiguration> ConfigurationAsync(WorkerOptions options, bool server, string pkiPath)
     {
         string uri = "urn:o6:benchmark:" + (server ? "server" : "client");
         bool encrypted = options.Security != "None";
         var trusted = new CertificateTrustList { StoreType = "Directory", StorePath = Path.Combine(pkiPath, "trusted") };
         if (encrypted)
-            trusted.TrustedCertificates.Add(new CertificateIdentifier(X509CertificateLoader.LoadCertificateFromFile(options.Get("trust-certificate"))));
+            trusted.TrustedCertificates = [new CertificateIdentifier { RawData = File.ReadAllBytes(options.Get("trust-certificate")) }];
+        // 2.0 loads the application certificate from a store; keep it in the per-process PKI directory.
+        var own = new CertificateIdentifier { StoreType = "Directory", StorePath = Path.Combine(pkiPath, "own") };
+        using (var certificate = Certificate(options, uri))
+        using (var store = new DirectoryCertificateStore(Telemetry))
+        {
+            store.Open(own.StorePath, false);
+            using var stored = Opc.Ua.Security.Certificates.Certificate.From(certificate);
+            await store.AddAsync(stored);
+            own.Thumbprint = certificate.Thumbprint;
+        }
         var config = new ApplicationConfiguration(Telemetry)
         {
             ApplicationName = "o6 benchmark " + (server ? "server" : "client"),
@@ -73,7 +86,7 @@ public static class Security
             ApplicationType = server ? ApplicationType.Server : ApplicationType.Client,
             SecurityConfiguration = new SecurityConfiguration
             {
-                ApplicationCertificate = new CertificateIdentifier(Certificate(options, uri)),
+                ApplicationCertificate = own,
                 TrustedPeerCertificates = trusted,
                 TrustedIssuerCertificates = new CertificateTrustList { StoreType = "Directory", StorePath = Path.Combine(pkiPath, "issuers") },
                 RejectedCertificateStore = new CertificateStoreIdentifier { StoreType = "Directory", StorePath = Path.Combine(pkiPath, "rejected") },

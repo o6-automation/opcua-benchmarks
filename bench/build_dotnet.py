@@ -76,11 +76,19 @@ def build(*, verbose: bool, force: bool) -> bool:
 
     try:
         install_sdk()
-        state = workers.source_state()
-        if state["commit"] != workers.PINS["source_commit"]:
-            raise RuntimeError(
-                "deps/ua-dotnet is not at the pinned release commit; run git submodule update --init deps/ua-dotnet"
-            )
+        packages = {}
+        for lock in sorted((workers.SOURCE / "locks").glob("*.json")):
+            for dependencies in json.loads(lock.read_text())["dependencies"].values():
+                for name, dependency in dependencies.items():
+                    if "resolved" in dependency:
+                        packages[name] = dependency["resolved"]
+        stale = sorted(
+            name
+            for name, version in packages.items()
+            if name.startswith("OPCFoundation.") and version != workers.PINS["source_version"]
+        )
+        if stale:
+            raise RuntimeError(f"locks/ do not pin UA-.NETStandard {workers.PINS['source_version']}: {', '.join(stale)}")
         workers.OUTPUT.mkdir(parents=True, exist_ok=True)
         manifest_path = workers.OUTPUT / "provenance.json"
         previous = json.loads(manifest_path.read_text()) if manifest_path.exists() else {}
@@ -94,12 +102,7 @@ def build(*, verbose: bool, force: bool) -> bool:
         args = [str(workers.DOTNET)]
         overrides = [
             "-p:Configuration=Release",
-            "-p:CustomTestTarget=net10.0",
             "-p:NuGetAudit=false",
-            "-p:Dockerbuild=true",
-            "-p:Version=1.5.378.176",
-            "-p:AssemblyVersion=1.5.378.0",
-            "-p:FileVersion=1.5.378.176",
             "-p:RestorePackagesWithLockFile=true",
             f"-p:DirectoryBuildTargetsPath={workers.SOURCE / 'Build.targets'}",
         ]
@@ -133,18 +136,11 @@ def build(*, verbose: bool, force: bool) -> bool:
             }
             for role in projects
         }
-        packages = {}
-        for lock in sorted((workers.SOURCE / "locks").glob("*.json")):
-            for dependencies in json.loads(lock.read_text())["dependencies"].values():
-                for name, dependency in dependencies.items():
-                    if "resolved" in dependency:
-                        packages[name] = dependency["resolved"]
         if workers.input_fingerprint() != inputs:
             raise RuntimeError("Build inputs changed during compilation; rebuild before sampling")
         manifest_path.write_text(
             json.dumps(
                 {
-                    "source": state,
                     "source_version": workers.PINS["source_version"],
                     "sdk": workers.PINS["sdk"],
                     "configuration": "Release",

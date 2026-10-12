@@ -25,7 +25,7 @@ try
     var options = new WorkerOptions(args);
     if (options.RuntimeInfo) { RuntimeInfo.Print(options); return 0; }
     using var pki = new PkiDirectory();
-    var config = Security.Configuration(options, true, pki.Path);
+    var config = await Security.ConfigurationAsync(options, true, pki.Path);
     await config.ValidateAsync(ApplicationType.Server);
     using var server = new BenchmarkServer(options);
     var stopped = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

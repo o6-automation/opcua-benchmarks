@@ -20,6 +20,6 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
   <PropertyGroup><OutputType>Exe</OutputType></PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../../common/dotnet/Benchmark.Common/Benchmark.Common.csproj" />
-    <ProjectReference Include="../../deps/ua-dotnet/Libraries/Opc.Ua.Client/Opc.Ua.Client.csproj" />
+    <PackageReference Include="OPCFoundation.NetStandard.Opc.Ua.Client" />
   </ItemGroup>
 </Project>

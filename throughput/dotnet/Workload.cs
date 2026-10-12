@@ -23,6 +23,8 @@ namespace Benchmark.Client;
 public sealed class Workload
 {
     private readonly ISession session;
+    // 2.0 keeps the blocking service calls only on the concrete SessionClient.
+    private readonly SessionClient client;
     private readonly WorkerOptions options;
     private readonly NodeCursor cursor;
     private readonly ReadValueId[] reads;
@@ -32,6 +34,7 @@ public sealed class Workload
     public Workload(ISession session, WorkerOptions options)
     {
         this.session = session;
+        client = session as SessionClient ?? throw new ArgumentException("Session must derive from SessionClient");
         this.options = options;
         cursor = new NodeCursor(options.Seed);
         uint[] ids = options.ArraySize > 1
@@ -41,24 +44,24 @@ public sealed class Workload
         writes = ids.Select(id => new WriteValue
         {
             NodeId = new NodeId(id, 1), AttributeId = Attributes.Value,
-            Value = new DataValue(new Variant(options.ArraySize > 1 ? (object)Contract.ArrayPayload(options.ArraySize) : (int)id))
+            Value = new DataValue(options.ArraySize > 1 ? new Variant(Contract.ArrayPayload(options.ArraySize)) : new Variant((int)id))
         }).ToArray();
         // SessionClientBatched otherwise splits a service into multiple requests.
         session.OperationLimits.MaxNodesPerRead = 0;
         session.OperationLimits.MaxNodesPerWrite = 0;
     }
 
-    private (ReadValueIdCollection Reads, WriteValueCollection Writes, long WriteSum) Request()
+    private (ArrayOf<ReadValueId> Reads, ArrayOf<WriteValue> Writes, long WriteSum) Request()
     {
-        var requestedReads = new ReadValueIdCollection(options.BatchSize);
-        var requestedWrites = new WriteValueCollection(options.BatchSize);
+        var requestedReads = new ReadValueId[options.BatchSize];
+        var requestedWrites = new WriteValue[options.BatchSize];
         long sum = 0;
         for (int i = 0; i < options.BatchSize; i++)
         {
             int index = options.ArraySize > 1 ? 0 : cursor.Next();
-            requestedReads.Add(reads[index]);
-            requestedWrites.Add(writes[index]);
-            sum += options.ArraySize > 1 ? options.ArraySize : (int)writes[index].Value.Value;
+            requestedReads[i] = reads[index];
+            requestedWrites[i] = writes[index];
+            sum += options.ArraySize > 1 ? options.ArraySize : writes[index].Value.WrappedValue.GetInt32();
         }
         // Collections belong to this request until completion. Entries and
         // prebuilt payloads are immutable and may be shared across the window.
@@ -70,7 +73,7 @@ public sealed class Workload
         ? (options.Mode == "sync" ? TimestampsToReturn.Source : TimestampsToReturn.Neither)
         : TimestampsToReturn.Source;
 
-    private long ValidateRead(ResponseHeader header, DataValueCollection results)
+    private long ValidateRead(ResponseHeader header, ArrayOf<DataValue> results)
     {
         Check(header.ServiceResult);
         if (results.Count != options.BatchSize) throw new InvalidDataException("Read returned wrong result count");
@@ -79,16 +82,16 @@ public sealed class Workload
             Check(value.StatusCode);
             if (options.ArraySize > 1)
             {
-                if (value.Value is not int[] array || array.Length != options.ArraySize)
+                if (!value.WrappedValue.TryGetValue(out ArrayOf<int> array) || array.Count != options.ArraySize)
                     throw new InvalidDataException("Read returned wrong Int32 array shape");
             }
-            else if (value.Value is not int) throw new InvalidDataException("Read returned a non-Int32 scalar");
+            else if (!value.WrappedValue.TryGetValue(out int _)) throw new InvalidDataException("Read returned a non-Int32 scalar");
         }
-        if (options.ArraySize > 1) return ((int[])results[0].Value)[0] + (long)options.ArraySize;
-        return (int)results[0].Value + (options.BatchSize > 1 ? options.BatchSize : 0L);
+        if (options.ArraySize > 1) return results[0].WrappedValue.GetInt32Array()[0] + (long)options.ArraySize;
+        return results[0].WrappedValue.GetInt32() + (options.BatchSize > 1 ? options.BatchSize : 0L);
     }
 
-    private long ValidateWrite(ResponseHeader header, StatusCodeCollection results, long sum)
+    private long ValidateWrite(ResponseHeader header, ArrayOf<StatusCode> results, long sum)
     {
         Check(header.ServiceResult);
         if (results.Count != options.BatchSize) throw new InvalidDataException("Write returned wrong result count");
@@ -110,16 +113,16 @@ public sealed class Workload
             if (options.Operation == "read")
             {
 #pragma warning disable CS0618 // The sync experiment deliberately uses the direct blocking service API.
-                var response = session.Read(header, 0, ReadTimestamps, request.Reads, out var results, out _);
+                var response = client.Read(header, 0, ReadTimestamps, request.Reads, out var results, out _);
 #pragma warning restore CS0618
-                checksum += ValidateRead(response, results);
+                checksum += ValidateRead(response!, results);
             }
             else
             {
 #pragma warning disable CS0618
-                var response = session.Write(header, request.Writes, out var results, out _);
+                var response = client.Write(header, request.Writes, out var results, out _);
 #pragma warning restore CS0618
-                checksum += ValidateWrite(response, results, request.WriteSum);
+                checksum += ValidateWrite(response!, results, request.WriteSum);
             }
         }
         return checksum;

@@ -62,24 +62,8 @@ def command(role: str, profile: str) -> list[str]:
     return [str(DOTNET), str(OUTPUT / role / f"{name}.dll"), "--profile", profile]
 
 
-def source_state() -> dict:
-    checkout = ROOT / "deps/ua-dotnet"
-
-    def git(*args: str) -> str:
-        return subprocess.check_output(["git", "-C", str(checkout), *args], text=True).strip()
-
-    commit = git("rev-parse", "HEAD")
-    diff = git("diff", "--binary", "HEAD", "--", ".")
-    untracked = git("ls-files", "--others", "--exclude-standard")
-    digest = hashlib.sha256(diff.encode())
-    for name in untracked.splitlines():
-        digest.update(name.encode())
-        digest.update((checkout / name).read_bytes())
-    return {"commit": commit, "dirty": bool(diff or untracked), "changes_sha256": digest.hexdigest()}
-
-
 def input_fingerprint() -> str:
-    digest = hashlib.sha256(json.dumps(source_state(), sort_keys=True).encode())
+    digest = hashlib.sha256()
     files = [ROOT / "bench/build_dotnet.py", Path(__file__)]
     files.append(ROOT / "subscription/DotnetWorker.cs")
     for folder in (SOURCE, ROOT / "throughput/dotnet"):

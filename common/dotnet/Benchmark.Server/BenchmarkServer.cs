@@ -20,8 +20,8 @@ using Opc.Ua.Server;
 
 namespace Benchmark.Server;
 
-public sealed class BenchmarkServer(WorkerOptions options) : StandardServer
+public sealed class BenchmarkServer(WorkerOptions options) : StandardServer(Security.Telemetry)
 {
-    protected override MasterNodeManager CreateMasterNodeManager(IServerInternal server, ApplicationConfiguration configuration)
-        => new(server, configuration, null, new BenchmarkNodeManager(server, configuration, options.ArraySizes));
+    protected override IMasterNodeManager CreateMasterNodeManager(IServerInternal server, ApplicationConfiguration configuration)
+        => new MasterNodeManager(server, configuration, null, new BenchmarkNodeManager(server, configuration, options.ArraySizes));
 }

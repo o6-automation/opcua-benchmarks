@@ -23,67 +23,68 @@ using Opc.Ua.Server;
 
 namespace Benchmark.Server;
 
-public sealed class CounterNodes : CustomNodeManager2
+public sealed class CounterNodes : AsyncCustomNodeManager
 {
     private readonly int count;
     private readonly ulong[] values;
     private ulong[]? measured, intervals;
     private long start, end, measuredStart, measuredEnd, intervalNs;
+    // Serializes read callbacks, arming, and result serialization. Owned by the
+    // worker because AsyncCustomNodeManager has no node manager lock.
+    private readonly Lock counterLock = new();
 
     public CounterNodes(IServerInternal server, ApplicationConfiguration config, int count)
         : base(server, config, true, server.Telemetry.CreateLogger<CounterNodes>(), Contract.Namespace)
     { this.count = count; values = new ulong[count]; }
 
-    public override void CreateAddressSpace(IDictionary<NodeId, IList<IReference>> externalReferences)
+    public override async ValueTask CreateAddressSpaceAsync(IDictionary<NodeId, IList<IReference>> externalReferences,
+        CancellationToken cancellationToken = default)
     {
-        lock (Lock)
+        if (NamespaceIndex != 1) throw new InvalidOperationException("Expected namespace 1");
+        if (!externalReferences.TryGetValue(ObjectIds.ObjectsFolder, out var references))
+            externalReferences[ObjectIds.ObjectsFolder] = references = new List<IReference>();
+        for (int i = 0; i < count; i++)
         {
-            if (NamespaceIndex != 1) throw new InvalidOperationException("Expected namespace 1");
-            if (!externalReferences.TryGetValue(ObjectIds.ObjectsFolder, out var references))
-                externalReferences[ObjectIds.ObjectsFolder] = references = new List<IReference>();
-            for (int i = 0; i < count; i++)
+            var node = new BaseDataVariableState(null)
             {
-                var node = new BaseDataVariableState(null)
+                NodeId = new NodeId((uint)i + 1, NamespaceIndex),
+                BrowseName = new QualifiedName($"Counter{i}", NamespaceIndex), DisplayName = new LocalizedText($"Counter{i}"),
+                TypeDefinitionId = VariableTypeIds.BaseDataVariableType, ReferenceTypeId = ReferenceTypeIds.Organizes,
+                DataType = DataTypeIds.UInt64, ValueRank = ValueRanks.Scalar, MinimumSamplingInterval = 1,
+                AccessLevel = AccessLevels.CurrentRead, UserAccessLevel = AccessLevels.CurrentRead,
+                Value = new Variant((ulong)0), StatusCode = StatusCodes.Good, Timestamp = DateTimeUtc.Now
+            };
+            int index = i;
+            node.OnReadValue = (ISystemContext context, NodeState state, NumericRange range,
+                QualifiedName encoding, ref Variant value, ref StatusCode status, ref DateTimeUtc timestamp) =>
+            {
+                lock (counterLock)
                 {
-                    NodeId = new NodeId((uint)i + 1, NamespaceIndex),
-                    BrowseName = new QualifiedName($"Counter{i}", NamespaceIndex), DisplayName = $"Counter{i}",
-                    TypeDefinitionId = VariableTypeIds.BaseDataVariableType, ReferenceTypeId = ReferenceTypeIds.Organizes,
-                    DataType = DataTypeIds.UInt64, ValueRank = ValueRanks.Scalar, MinimumSamplingInterval = 1,
-                    AccessLevel = AccessLevels.CurrentRead, UserAccessLevel = AccessLevels.CurrentRead,
-                    Value = (ulong)0, StatusCode = StatusCodes.Good, Timestamp = DateTime.UtcNow
-                };
-                int index = i;
-                node.OnReadValue = (ISystemContext context, NodeState state, NumericRange range,
-                    QualifiedName encoding, ref object value, ref StatusCode status, ref DateTime timestamp) =>
-                {
-                    lock (Lock)
+                    long admission = CounterWorker.Now();
+                    if (start != 0 && admission >= start && admission < end)
                     {
-                        long admission = CounterWorker.Now();
-                        if (start != 0 && admission >= start && admission < end)
+                        values[index]++;
+                        if (measured is not null && admission >= measuredStart && admission < measuredEnd)
                         {
-                            values[index]++;
-                            if (measured is not null && admission >= measuredStart && admission < measuredEnd)
-                            {
-                                measured[index]++;
-                                intervals![(admission - measuredStart) / intervalNs]++;
-                            }
+                            measured[index]++;
+                            intervals![(admission - measuredStart) / intervalNs]++;
                         }
-                        value = values[index];
-                        status = StatusCodes.Good;
-                        timestamp = DateTime.UtcNow;
-                        return ServiceResult.Good;
                     }
-                };
-                node.AddReference(ReferenceTypeIds.Organizes, true, ObjectIds.ObjectsFolder);
-                references.Add(new NodeStateReference(ReferenceTypeIds.Organizes, false, node.NodeId));
-                AddPredefinedNode(SystemContext, node);
-            }
+                    value = new Variant(values[index]);
+                    status = StatusCodes.Good;
+                    timestamp = DateTimeUtc.Now;
+                    return ServiceResult.Good;
+                }
+            };
+            node.AddReference(ReferenceTypeIds.Organizes, true, ObjectIds.ObjectsFolder);
+            references.Add(new NodeStateReference(ReferenceTypeIds.Organizes, false, node.NodeId));
+            await AddPredefinedNodeAsync(SystemContext, node, cancellationToken);
         }
     }
 
     public void Arm(long start, long end, long measuredStart, long measuredEnd, long intervalNs, bool measureServer)
     {
-        lock (Lock)
+        lock (counterLock)
         {
             this.start = start; this.end = end;
             this.measuredStart = measuredStart; this.measuredEnd = measuredEnd; this.intervalNs = intervalNs;
@@ -99,18 +100,18 @@ public sealed class CounterNodes : CustomNodeManager2
     {
         // Sampling threads and the completion task share this lock. After the
         // end deadline, callbacks cannot mutate the arrays being serialized.
-        lock (Lock) return new { @event = "result", counts = measured, interval_counts = intervals };
+        lock (counterLock) return new { @event = "result", counts = measured, interval_counts = intervals };
     }
 
 }
 
-public sealed class CounterServer(int count) : StandardServer
+public sealed class CounterServer(int count) : StandardServer(Security.Telemetry)
 {
     public CounterNodes? Nodes { get; private set; }
-    protected override MasterNodeManager CreateMasterNodeManager(IServerInternal server, ApplicationConfiguration config)
+    protected override IMasterNodeManager CreateMasterNodeManager(IServerInternal server, ApplicationConfiguration config)
     {
         Nodes = new CounterNodes(server, config, count);
-        return new(server, config, null, Nodes);
+        return new MasterNodeManager(server, config, null, Nodes);
     }
 }
 
@@ -141,8 +142,8 @@ public static class CounterWorker
                 throw new ArgumentException("Invalid worker arguments");
             var shared = new WorkerOptions(["--profile", "server_limits", "--port", port.ToString(CultureInfo.InvariantCulture)]);
             using var pki = new PkiDirectory();
-            var config = Security.Configuration(shared, true, pki.Path);
-            var limits = config.ServerConfiguration;
+            var config = await Security.ConfigurationAsync(shared, true, pki.Path);
+            var limits = config.ServerConfiguration!;
             limits.ShutdownDelay = 0;
             limits.MinPublishingInterval = 1;
             limits.PublishingResolution = 1;

@@ -20,7 +20,7 @@ using Opc.Ua.Server;
 
 namespace Benchmark.Server;
 
-public sealed class BenchmarkNodeManager : CustomNodeManager2
+public sealed class BenchmarkNodeManager : AsyncCustomNodeManager
 {
     private readonly int[] sizes;
     public BenchmarkNodeManager(IServerInternal server, ApplicationConfiguration configuration, int[] sizes)
@@ -29,40 +29,38 @@ public sealed class BenchmarkNodeManager : CustomNodeManager2
         this.sizes = sizes;
     }
 
-    public override void CreateAddressSpace(IDictionary<NodeId, IList<IReference>> externalReferences)
+    public override async ValueTask CreateAddressSpaceAsync(IDictionary<NodeId, IList<IReference>> externalReferences,
+        CancellationToken cancellationToken = default)
     {
-        lock (Lock)
-        {
-            if (NamespaceIndex != 1) throw new InvalidOperationException($"Benchmark namespace must be 1, got {NamespaceIndex}");
-            if (!externalReferences.TryGetValue(ObjectIds.ObjectsFolder, out var references))
-                externalReferences[ObjectIds.ObjectsFolder] = references = new List<IReference>();
-            for (int i = 0; i < Contract.NodeCount; i++)
-                AddVariable(Contract.FirstNodeId + (uint)i, i, references);
-            for (int i = 0; i < sizes.Length; i++)
-                AddVariable(Contract.FirstArrayId + (uint)i, Contract.ArrayPayload(sizes[i]), references);
-        }
+        if (NamespaceIndex != 1) throw new InvalidOperationException($"Benchmark namespace must be 1, got {NamespaceIndex}");
+        if (!externalReferences.TryGetValue(ObjectIds.ObjectsFolder, out var references))
+            externalReferences[ObjectIds.ObjectsFolder] = references = new List<IReference>();
+        for (int i = 0; i < Contract.NodeCount; i++)
+            await AddVariableAsync(Contract.FirstNodeId + (uint)i, i, references, cancellationToken);
+        for (int i = 0; i < sizes.Length; i++)
+            await AddVariableAsync(Contract.FirstArrayId + (uint)i, Contract.ArrayPayload(sizes[i]), references, cancellationToken);
     }
 
-    private void AddVariable(uint id, object value, IList<IReference> references)
+    private async ValueTask AddVariableAsync(uint id, object value, IList<IReference> references, CancellationToken cancellationToken)
     {
         var node = new BaseDataVariableState(null)
         {
             NodeId = new NodeId(id, NamespaceIndex),
             BrowseName = new QualifiedName($"Value{id}", NamespaceIndex),
-            DisplayName = $"Value{id}",
+            DisplayName = new LocalizedText($"Value{id}"),
             TypeDefinitionId = VariableTypeIds.BaseDataVariableType,
             ReferenceTypeId = ReferenceTypeIds.Organizes,
             DataType = DataTypeIds.Int32,
             ValueRank = value is int[] ? ValueRanks.OneDimension : ValueRanks.Scalar,
-            ArrayDimensions = value is int[] array ? new ReadOnlyList<uint>([(uint)array.Length]) : null,
+            ArrayDimensions = value is int[] array ? [(uint)array.Length] : default,
             AccessLevel = AccessLevels.CurrentReadOrWrite,
             UserAccessLevel = AccessLevels.CurrentReadOrWrite,
-            Value = value,
+            Value = value is int[] payload ? new Variant(payload) : new Variant((int)value),
             StatusCode = StatusCodes.Good,
-            Timestamp = DateTime.UtcNow
+            Timestamp = DateTimeUtc.Now
         };
         node.AddReference(ReferenceTypeIds.Organizes, true, ObjectIds.ObjectsFolder);
         references.Add(new NodeStateReference(ReferenceTypeIds.Organizes, false, node.NodeId));
-        AddPredefinedNode(SystemContext, node);
+        await AddPredefinedNodeAsync(SystemContext, node, cancellationToken);
     }
 }
