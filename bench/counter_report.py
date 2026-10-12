@@ -49,7 +49,13 @@ def workload_note(sources):
         "periodically sampling read callbacks. Their application loops update every item at the configured "
         "sampling period and skip missed slots. asyncua and gopcua report the publishing interval as their "
         "revised sampling interval; S2OPC reports zero (change-triggered sampling). Their results include "
-        "application-update work and measure a different counter generation path.</p>" + history + "</aside>"
+        "application-update work and measure a different counter generation path.</p>"
+        "<p><strong>node-opcua-fronts exception:</strong> with FrontThreadEngine the monitored items live in a "
+        "session worker that samples the shared store; a read callback of the engine thread would cost a "
+        "round trip per sample. The engine thread therefore writes every item at the configured sampling "
+        "period, as for asyncua, and server observations count those writes.</p>"
+        + history
+        + "</aside>"
     )
 
 

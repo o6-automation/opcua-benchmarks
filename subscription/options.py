@@ -23,6 +23,8 @@ from subscription import strategy
 MAX_ITEMS = 1_048_576
 
 SERVERS = ("open62541", "o6-python", "asyncua", "node-opcua", "ua-dotnet", "milo", "gopcua", "s2opc")
+# node-opcua through FrontThreadEngine (common/node-fronts): opt-in, application-update counters.
+FRONTS = ("node-opcua-fronts",)
 
 
 def bounded(minimum, maximum):
@@ -44,7 +46,11 @@ OPTIONS = {
         "Separate searches for each selected observer; never measure both in one run.",
     ),
     "implementation": ConfigOption(
-        "varying", list(SERVERS), varying(one_of(*SERVERS)), "Server SDKs; every case uses the same native setup/client worker."
+        "varying",
+        list(SERVERS),
+        varying(one_of(*SERVERS, *FRONTS)),
+        "Server SDKs; every case uses the same native setup/client worker. "
+        "node-opcua-fronts is opt-in.",
     ),
     **strategy.OPTIONS,
     "items_start": ConfigOption(
