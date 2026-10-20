@@ -109,6 +109,8 @@ python singlecore_server_bench.py results/bench-singlecore-server-2026-10-12.db 
 
 Without a database argument, `--plot` uses today's database. PNGs are saved in
 `<database-name>.plots/` beside it; plotting does not run benchmarks or clear results.
+Subscription plots use a logarithmic x-axis for both sampling periods.
+The top panels rank servers from highest to lowest passing load, above the missed-percentage curves.
 
 ## Contributing
 

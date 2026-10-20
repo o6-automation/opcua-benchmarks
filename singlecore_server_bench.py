@@ -49,7 +49,7 @@ from contextlib import closing
 from dataclasses import dataclass
 from datetime import datetime
 import json
-from math import isclose, isfinite
+from math import isclose, isfinite, log10
 from pathlib import Path
 import shlex
 import sqlite3
@@ -478,20 +478,29 @@ def draw_throughput(results: list[ThroughputResult], versions: dict[str, str]):
     return fig
 
 
-def subscription_marker_indices(rows, width_points, height_points, sample_rate=100, axis_end=1000000):
+def subscription_marker_indices(rows, width_points, height_points, sample_rate=100, axis_end=1000000, axis_start=1):
     """Thin only dense markers, never the curve or its underlying observations."""
     if not rows:
         return []
-    boundary = next((i for i, r in enumerate(rows) if r.items * sample_rate >= 50000), len(rows) - 1)
-    keep = {0, boundary, *range(boundary, len(rows))}
+    # Project into the logarithmic axis before judging visible marker spacing.
+    points = [
+        (
+            log10(r.items * sample_rate / axis_start) / log10(axis_end / axis_start) * width_points,
+            (100 - r.worst_progress) / 83 * height_points,
+        )
+        for r in rows
+    ]
+    keep = {0, len(rows) - 1}
+    previous = 0
+    for index in range(1, len(rows) - 1):
+        if points[index][0] - points[previous][0] >= 7:
+            keep.add(index)
+            previous = index
     last_passing = max((i for i, r in enumerate(rows) if r.passed), default=None)
     if last_passing is not None:
         keep.add(last_passing)
     # Distances are in typographic points at this figure's actual layout.
-    # Douglas-Peucker selection preserves the visible bends in the dense prefix.
-    points = [
-        (r.items * sample_rate / axis_end * width_points, (100 - r.worst_progress) / 83 * height_points) for r in rows
-    ]
+    # Douglas-Peucker selection preserves visible bends between retained markers.
 
     def select(first, last):
         if last - first < 2:
@@ -508,7 +517,7 @@ def subscription_marker_indices(rows, width_points, height_points, sample_rate=1
             select(first, index)
             select(index, last)
 
-    anchors = sorted(i for i in keep if i <= boundary)
+    anchors = sorted(keep)
     for first, last in zip(anchors, anchors[1:]):
         select(first, last)
     return sorted(keep)
@@ -519,19 +528,20 @@ def draw_subscriptions(series, sampling_ms=10):
     from matplotlib.colors import to_rgba
     from matplotlib.lines import Line2D
     from matplotlib.patches import ConnectionPatch
-    from matplotlib.ticker import AutoMinorLocator, FuncFormatter, MaxNLocator, MultipleLocator
+    from matplotlib.ticker import FuncFormatter, LogLocator, MultipleLocator, NullFormatter
 
     title_font = configure_plot_style()
     sample_rate = 1000 / sampling_ms
+    smallest_load = min(row.items * sample_rate for rows in series.values() for row in rows)
     largest_load = max(row.items * sample_rate for rows in series.values() for row in rows)
-    axis_end = max(10000 * sample_rate, largest_load * 1.15)
+    axis_start, axis_end = smallest_load / 1.25, largest_load * 1.15
     extra_height = max(0, len(series) - 5) * 0.25
     fig = plt.figure(figsize=(8.4, 8.1 + extra_height))
     grid = fig.add_gridspec(
-        2, 1, height_ratios=[3.3, 1.6 + extra_height], hspace=0.25, left=0.29, right=0.935, bottom=0.20, top=0.76
+        2, 1, height_ratios=[1.6 + extra_height, 3.3], hspace=0.25, left=0.29, right=0.935, bottom=0.20, top=0.73
     )
-    ax = fig.add_subplot(grid[0])
-    guides = fig.add_subplot(grid[1], sharex=ax)
+    ax = fig.add_subplot(grid[1])
+    guides = fig.add_subplot(grid[0], sharex=ax)
     title = fig.suptitle(
         f"OPC UA Monitoring Samples\n({sample_rate:g}Hz/Variable)", fontproperties=title_font, y=0.96, linespacing=1.25
     )
@@ -552,6 +562,7 @@ def draw_subscriptions(series, sampling_ms=10):
             position.height * fig.get_figheight() * 72,
             sample_rate,
             axis_end,
+            axis_start,
         )
         ax.plot(
             [x[i] for i in marked],
@@ -566,17 +577,17 @@ def draw_subscriptions(series, sampling_ms=10):
         handles.append(Line2D([], [], color=color, lw=2, label=SDK_LABELS[sdk], linestyle="-"))
     ax.axhline(1, color="#FF0000", linestyle=":", linewidth=1.3, zorder=2)
     handles.append(Line2D([], [], color="#FF0000", lw=1.3, linestyle=":", label="1% missed threshold"))
-    ax.set_xscale("linear")
-    axis_start = 0
+    ax.set_xscale("log")
     ax.set_xlim(axis_start, axis_end)
-    ax.xaxis.set_major_locator(MaxNLocator(nbins=5, steps=[1, 2, 2.5, 5, 10]))
-    ax.xaxis.set_minor_locator(AutoMinorLocator(4))
-    ax.xaxis.set_major_formatter(FuncFormatter(lambda value, _: f"{value:,.0f}"))
+    ax.xaxis.set_major_locator(LogLocator(base=10))
+    ax.xaxis.set_minor_locator(LogLocator(base=10, subs=range(2, 10)))
+    ax.xaxis.set_minor_formatter(NullFormatter())
     ax.set_ylim(80, -3)  # Burndown: 0% missed at the top, 80% at the bottom.
     ax.yaxis.set_major_locator(MultipleLocator(10))
     ax.yaxis.set_minor_locator(MultipleLocator(5))
     ax.yaxis.set_major_formatter(FuncFormatter(lambda value, _: f"{value:.0f}%"))
-    ax.tick_params(axis="x", which="both", labelbottom=False)
+    ax.tick_params(axis="x", labelsize=10.5, pad=5)
+    ax.set_xlabel("Samples/second", labelpad=9)
     ax.set_ylabel("Percent Missed Samples", labelpad=10)
     ax.set_axisbelow(True)
     ax.grid(which="major", color=GRAY, alpha=0.18, linewidth=0.6)
@@ -588,7 +599,7 @@ def draw_subscriptions(series, sampling_ms=10):
     legend = fig.legend(
         handles=handles,
         loc="upper center",
-        bbox_to_anchor=(0.5, 0.86),
+        bbox_to_anchor=(0.5, 0.89),
         ncol=3,
         fontsize=10.5,
         framealpha=1,
@@ -606,18 +617,21 @@ def draw_subscriptions(series, sampling_ms=10):
         pad=12,
         bbox={"facecolor": BACKGROUND, "edgecolor": "none", "pad": 2},
     )
-    for index, (sdk, rows) in enumerate(series.items()):
-        passing = [r.items * sample_rate for r in rows if r.passed]
+    capacities = [
+        (sdk, max((r.items * sample_rate for r in rows if r.passed), default=0))
+        for sdk, rows in series.items()
+    ]
+    capacities.sort(key=lambda item: item[1], reverse=True)
+    for index, (sdk, limit) in enumerate(capacities):
         color = SDK_COLORS[sdk]
-        if passing:
-            limit = max(passing)
+        if limit > 0:
             guides.hlines(index, axis_start, limit, color=color, linewidth=1.8)
             guides.plot(limit, index, marker="|", color=color, markersize=8)
             guides.annotate(
                 f"{limit:,.0f}", (limit, index), xytext=(5, 0), textcoords="offset points", fontsize=10.5, va="center"
             )
             # Same x-coordinate on both shared axes: link the 1% missed reference
-            # at the last passing load to its capacity endpoint below.
+            # at the last passing load to its capacity endpoint above.
             arrow = ConnectionPatch(
                 xyA=(limit, 1),
                 coordsA="data",
@@ -646,11 +660,10 @@ def draw_subscriptions(series, sampling_ms=10):
                 va="center",
                 color=color,
             )
-    guides.set_yticks(range(len(series)), [SDK_LABELS[sdk] for sdk in series])
-    guides.set_ylim(len(series) - 0.5, -0.5)
+    guides.set_yticks(range(len(capacities)), [SDK_LABELS[sdk] for sdk, _ in capacities])
+    guides.set_ylim(len(capacities) - 0.5, -0.5)
     guides.tick_params(axis="y", length=0, labelsize=10.5, pad=8)
-    guides.tick_params(axis="x", labelsize=10.5, pad=5)
-    guides.set_xlabel("Samples/second", labelpad=9)
+    guides.tick_params(axis="x", which="both", labelbottom=False)
     guides.set_axisbelow(True)
     guides.grid(axis="x", which="major", color=GRAY, alpha=0.18, linewidth=0.6)
     guides.grid(axis="x", which="minor", color=GRAY, alpha=0.09, linewidth=0.45)
