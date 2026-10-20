@@ -49,7 +49,7 @@ _ALL_PAIRS = _DEFAULT_PAIRS | frozenset(
     # The optional server-only SDKs (common/sdk_workers.py), against every client.
     (client, server)
     for client in ("open62541", "o6-python", "asyncua", "ua-dotnet", "node-opcua")
-    for server in ("milo", "s2opc", "gopcua", "node-opcua-fronts")
+    for server in ("milo", "s2opc", "gopcua", "node-opcua-fronts", "async-opcua")
 )
 _SECURITY_POLICIES: tuple[str, ...] = ("None", "Basic256Sha256")
 _PAIR_STRINGS: tuple[str, ...] = tuple(sorted(f"{client}:{server}" for client, server in _ALL_PAIRS))
@@ -74,7 +74,8 @@ OPTIONS: dict[str, ConfigOption] = {
             "Client/server pairings to measure, as 'client:server' strings. The first "
             "element is the client implementation, the second the server. "
             "Implementations: open62541, o6-python, asyncua, ua-dotnet and node-opcua (opt-in), plus the "
-            "server-only milo, s2opc and gopcua (opt-in, as the second element). The supported choices are the "
+            "server-only milo, s2opc, gopcua, node-opcua-fronts and async-opcua (opt-in, as the second element). "
+            "The supported choices are the "
             "whole matrix; defaults retain the seven C/Python pairs. A 'client:server' "
             "combination that is not listed here is not part of the comparison."
         ),

@@ -14,7 +14,7 @@
 #
 #    Copyright 2026 (c) o6 Automation GmbH (Author: Daniel Opitz)
 
-"""Counter node setup for the released o6 Python API."""
+"""Counter node setup for the asynchronous o6 API and configurable limits."""
 
 import asyncio
 
@@ -23,11 +23,16 @@ async def prepare(args, counters):
     import o6
 
     server = o6.Server(port=args.port, loop=asyncio.get_running_loop())
-    # The public o6 package uses its built-in subscription limits.
+    server.config.samplingIntervalLimits = [1, 86400e3]
+    server.config.publishingIntervalLimits = [1, 86400e3]
+    server.config.queueSizeLimits = [1, 1]
+    server.config.maxMonitoredItems = args.items
+    server.config.maxMonitoredItemsPerSubscription = args.items
+    server.config.maxNotificationsPerPublish = 2**32 - 1
     nodes = []
     for i in range(args.items):
-        node = server.addVariable("Counter", server.objectsNode, o6.UInt64(0), nodeId=f"ns=1;i={i + 1}")
-        node(value=o6.Double(1), attr="MinimumSamplingInterval")
+        node = await server.addVariable("Counter", server.objectsNode, o6.UInt64(0), nodeId=f"ns=1;i={i + 1}")
+        await node(value=o6.Double(1), attr="MinimumSamplingInterval")
         nodes.append(node)
         if counters is not None:
 
@@ -37,6 +42,6 @@ async def prepare(args, counters):
             server.implement(node, read=read)
 
     async def write(node, value):
-        node(value=o6.UInt64(value))
+        await node(value=o6.UInt64(value))
 
     return server, nodes, write

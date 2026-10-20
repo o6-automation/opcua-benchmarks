@@ -20,14 +20,14 @@ from common.options import ConfigOption, one_of, uniform, varying, whole_number
 
 DEFAULT_IMPLEMENTATIONS = ("open62541", "o6-python", "asyncua", "ua-dotnet", "node-opcua")
 # The optional server-only SDKs (common/sdk_workers.py) are opt-in.
-IMPLEMENTATIONS = DEFAULT_IMPLEMENTATIONS + ("milo", "s2opc", "gopcua", "node-opcua-fronts")
+IMPLEMENTATIONS = DEFAULT_IMPLEMENTATIONS + ("milo", "s2opc", "gopcua", "node-opcua-fronts", "async-opcua")
 
 OPTIONS = {
     "implementation": ConfigOption(
         "varying",
         list(DEFAULT_IMPLEMENTATIONS),
         varying(one_of(*IMPLEMENTATIONS)),
-        "Servers to search using the same native scalar Read client. milo, s2opc and gopcua are opt-in.",
+        "Servers to search using the same native scalar Read client. milo, s2opc, gopcua, node-opcua-fronts and async-opcua are opt-in.",
     ),
     "probe_ms": ConfigOption("uniform", 1000, uniform(whole_number(250)), "Short discovery window in milliseconds."),
     "confirm_ms": ConfigOption(

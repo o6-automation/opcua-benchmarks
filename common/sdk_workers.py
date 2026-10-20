@@ -14,7 +14,7 @@
 #
 #    Copyright 2026 (c) Sterfive (Author: Etienne Rossignon)
 
-"""Optional server-only SDK workers: Eclipse Milo, S2OPC, gopcua, and node-opcua with front threads.
+"""Optional server-only SDK workers, including async-opcua (Rust).
 
 Each one is a single server program under ``common/<sdk>/`` that exposes the
 address space of ``common/servers/open62541_server.c`` and takes the same
@@ -67,6 +67,7 @@ SDKS: dict[str, Sdk] = {
         Sdk("milo", "Eclipse Milo (Java)", ROOT / "common/milo", True),
         Sdk("s2opc", "S2OPC (C)", ROOT / "common/s2opc", False),
         Sdk("gopcua", "gopcua (Go)", ROOT / "common/gopcua", True),
+        Sdk("async-opcua", "async-opcua (Rust)", ROOT / "common/async-opcua", False),
         # The stock node-opcua package served by FrontThreadEngine: one front thread per CPU
         # of the server's share but one, left to the engine (common/node-fronts/server.mjs).
         Sdk("node-opcua-fronts", "node-opcua fronts (Node.js, CPU-1 threads)", ROOT / "common/node-fronts", True),
@@ -80,6 +81,7 @@ COLORS: dict[str, tuple[str, str]] = {
     "milo": ("#e87ba4", "#d55181"),
     "s2opc": ("#eda100", "#c98500"),
     "gopcua": ("#4a3aa7", "#9085e9"),
+    "async-opcua": ("#b45309", "#fbbf24"),
     "node-opcua-fronts": ("#008300", "#5fb85f"),
 }
 
@@ -163,7 +165,7 @@ def input_fingerprint(name: str) -> str:
     files += [
         path
         for path in sdk.source.rglob("*")
-        if path.is_file() and not {"build", "target"}.intersection(path.relative_to(sdk.source).parts)
+        if path.is_file() and not {"build", "target", "__pycache__"}.intersection(path.relative_to(sdk.source).parts)
     ]
     for path in sorted(files):
         digest.update(str(path.relative_to(ROOT)).encode())
@@ -217,8 +219,8 @@ def prepare_metadata(store, names: set[str], profile: str, amend: bool) -> None:
 
 
 def runtime_info(name: str) -> dict:
-    """Ask the built server who it is, where it can say (Milo and gopcua)."""
-    if name not in ("milo", "gopcua"):
+    """Ask the built server for its runtime and SDK identity where supported."""
+    if name not in ("milo", "gopcua", "async-opcua"):
         return {}
     output = subprocess.run(
         command(name) + ["--runtime-info"], env=environment(name), capture_output=True, text=True, timeout=60, check=True

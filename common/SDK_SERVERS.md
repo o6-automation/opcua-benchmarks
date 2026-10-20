@@ -1,6 +1,6 @@
 # Server-only SDK workers
 
-Three further OPC UA server SDKs can be measured as servers, against the
+Additional OPC UA SDKs can be measured as servers, against the
 existing clients:
 
 | Name | SDK | Language, toolchain | Source |
@@ -8,20 +8,21 @@ existing clients:
 | `milo` | Eclipse Milo 1.2.0-RC1 (`milo-sdk-server`) | Java, Temurin JDK 21.0.12.1, Maven 3.9.16 | `common/milo/` |
 | `s2opc` | S2OPC Toolkit 1.7.3 | C, mbedtls 3.6.7, expat 2.9.0 | `common/s2opc/` |
 | `gopcua` | gopcua v0.9.1 (`github.com/gopcua/opcua/server`) | Go 1.27.1 | `common/gopcua/` |
+| `async-opcua` | [FreeOpcUa async-opcua 0.19.0](https://github.com/FreeOpcUa/async-opcua/tree/0.19.0) | Rust 1.99.1 | `common/async-opcua/` |
 | `node-opcua-fronts` | node-opcua `FrontThreadEngine`, the package of `common/node` | Node.js of `common/node` (`--node` first) | `common/node-fronts/` |
 
 From the repository root, run `python -m bench.build` with `--milo`, `--s2opc`
-or `--gopcua`, or use `--node --node-opcua-fronts` for the front-thread variant.
+or `--gopcua`, `--async-opcua`, or use `--node --node-opcua-fronts` for the front-thread variant.
 Combine these flags to build multiple SDKs. The bootstrap supports Linux
 x86_64. Archives are checksum-pinned in `common/sdk_toolchains.json`; Go
-dependencies are pinned by `go.sum`. Toolchains, caches
+dependencies are pinned by `go.sum`, and Rust dependencies by `Cargo.lock`. Toolchains, caches
 and the S2OPC libraries stay under ignored `deps/` directories, and sampling
 performs no downloads. Preflight compares sources, build steps, pins and the
 built artifacts; rebuild after changing any of them.
 
 Select the names as an `implementation` in server_limits, server_capacity and
 [subscription](../subscription/README.md), or as the server half of a throughput
-`client:server` pair. They have no client implementation.
+`client:server` pair. These adapters provide servers only.
 
 Each server exposes the address space of `common/servers/open62541_server.c`:
 100 writable Int32 scalars at `ns=1;i=1001..1100` and the requested Int32
@@ -53,8 +54,28 @@ SDK-specific notes, which a reader of the results should know:
   live there.
 - **gopcua** has no hook to validate the value of a Write, so its server
   stores whatever it is sent. The benchmark clients always write the declared
-  Int32 shape, so this changes no measured path, but the other servers check
-  the type and gopcua does not. Its `GOMEMLIMIT` is set from the memory share.
+  Int32 shape, so this changes no measured path. Its `GOMEMLIMIT` is set from
+  the memory share.
+- **async-opcua** is the Rust SDK, distinct from Python's `asyncua`. It supports
+  all four suites, including Read/Write scalar, batch and array throughput,
+  None and Basic256Sha256 SignAndEncrypt, and both subscription observers.
+  Its Tokio runtime sizes its worker pool from the assigned CPU affinity.
+  The workload node manager is registered before diagnostics to keep `ns=1`.
+  Subscription counters use SDK read callbacks and the public `SyncSampler`
+  with a 1 ms polling period: the convenience `SimpleNodeManager` otherwise
+  imposes a 100 ms polling floor even when it accepts faster sampling.
+  The build applies [session-nonce.patch](async-opcua/session-nonce.patch) to
+  the pinned upstream source. It generates a fresh 32-byte ActivateSession
+  nonce under SecurityPolicy None, allowing the native clients to connect.
+  Encrypted sessions and measured Read/Write/subscription paths are unchanged.
+  The source commit, patch, locked dependencies, compiler and binary are
+  recorded in build provenance; runtime metadata also identifies the patch.
+  Upstream 0.19.0 checks array Write types but accepts mismatched scalar
+  types. The benchmark always writes Int32 values; this SDK behavior is retained.
+  Its notification queues also set an overflow information bit when replacing
+  a queued value at size one. The shared client accepts Good-severity values
+  with information bits and still rejects Bad/Uncertain status, wrong types
+  and decreasing counters.
 - **node-opcua-fronts** is the same node-opcua package as the `node-opcua`
   row, served by `FrontThreadEngine` instead of one `OPCUAServer` thread: the
   main thread is the engine (it owns the compact store and applies every
@@ -63,7 +84,15 @@ SDK-specific notes, which a reader of the results should know:
   hash, so a single-client case uses one front. `O6_NODE_FRONTS` overrides the
   count; the server logs the count it used.
 
-async-opcua (Rust, the maintained successor of the `opcua` crate) was
-tried and left out: under SecurityPolicy None it returns a null server nonce
-from ActivateSession (hard-coded in 0.19.0), where Part 4 requires one of at
-least 32 bytes, and the open62541 client rejects the session.
+For an async-opcua throughput run:
+
+```sh
+python -m bench.build --async-opcua
+python -m bench.throughput new rust.db
+python -m bench.throughput config rust.db pair open62541:async-opcua
+python -m bench.throughput sample 3 rust.db --name rust
+```
+
+For the other suites, initialize the suite with `new`, set `implementation`
+to `async-opcua`, and sample with the usual suite command. A build needs network
+access; measurements use only the installed artifacts.

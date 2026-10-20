@@ -33,7 +33,8 @@ static void changed(UA_Client *client, UA_UInt32 subscription, void *context,
     uint64_t now = now_ns();
     if(now < start_ns || now >= measured_end_ns) return;
     Observation *state = (Observation *)item_context;
-    if((value->hasStatus && value->status != UA_STATUSCODE_GOOD) || !value->hasValue ||
+    /* Queue replacement may add informational bits while the value stays Good. */
+    if((value->hasStatus && !UA_StatusCode_isGood(value->status)) || !value->hasValue ||
        !UA_Variant_hasScalarType(&value->value, &UA_TYPES[UA_TYPES_UINT64])) { ++errors; return; }
     uint64_t next = *(UA_UInt64 *)value->value.data;
     if(next < state->value) { ++errors; return; }

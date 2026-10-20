@@ -3,6 +3,8 @@
 Searches for high scalar Read throughput using one fixed open62541 C client
 against each selected server SDK. Discovery varies client count and pipeline
 depth; fresh confirmation samples repeat promising candidates.
+The [server-only SDKs](../common/SDK_SERVERS.md), including `async-opcua` (Rust),
+are available as opt-in implementations.
 
 ```sh
 python -m bench.server_capacity new bench.db

@@ -50,5 +50,37 @@
   "node-opcua-fronts": {
     "sdk": "node-opcua FrontThreadEngine, the package of common/node/toolchain.json",
     "runtime": "node, as common/node/toolchain.json"
+  },
+  "async-opcua": {
+    "sdk": "async-opcua 0.19.0",
+    "runtime": "rustc 1.99.1",
+    "commit": "9ad28fc011002398f2e8a95696a50408a14531d9",
+    "archives": {
+      "rustc": {
+        "url": "https://static.rust-lang.org/dist/2026-10-15/rustc-1.99.1-x86_64-unknown-linux-gnu.tar.xz",
+        "sha256": "2ff05ff9c08a90861e7f6e4065b40a8b87463b4576186fd613871c3e37f2091f",
+        "into": "deps/rust-dist/rustc"
+      },
+      "rust-std": {
+        "url": "https://static.rust-lang.org/dist/2026-10-15/rust-std-1.99.1-x86_64-unknown-linux-gnu.tar.xz",
+        "sha256": "109b074225bf5b9ea3820890876bfdf4ed161adbfaf94b2b4b5984c85ee5d958",
+        "into": "deps/rust-dist/rust-std"
+      },
+      "cargo": {
+        "url": "https://static.rust-lang.org/dist/2026-10-15/cargo-1.99.1-x86_64-unknown-linux-gnu.tar.xz",
+        "sha256": "53f3521949404d595efb06a55c12c5658d4ed1c75566f33d3d514eaebe70bd8a",
+        "into": "deps/rust-dist/cargo"
+      },
+      "rustfmt-preview": {
+        "url": "https://static.rust-lang.org/dist/2026-10-15/rustfmt-1.99.1-x86_64-unknown-linux-gnu.tar.xz",
+        "sha256": "e3b36c4c7ec3486c059d8067ff48787676612007123aad7a4e8ec12c48ee9ba2",
+        "into": "deps/rust-dist/rustfmt-preview"
+      },
+      "source": {
+        "url": "https://codeload.github.com/FreeOpcUa/async-opcua/tar.gz/9ad28fc011002398f2e8a95696a50408a14531d9",
+        "into": "deps/async-opcua-src",
+        "sha256": "cd308a3f57f13515f493126f0a9d46b633781e6cf774e1489c3f366f4a815536"
+      }
+    }
   }
 }

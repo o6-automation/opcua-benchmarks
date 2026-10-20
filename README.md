@@ -1,7 +1,7 @@
 # OPC UA benchmarks
 
 Benchmarks for open62541, o6\Python, asyncua, OPC Foundation UA-.NETStandard,
-and node-opcua, plus the Eclipse Milo, S2OPC and gopcua servers.
+and node-opcua, plus the Eclipse Milo, S2OPC, gopcua and async-opcua (Rust) servers.
 Configuration, measurements, and HTML reports are stored in SQLite.
 
 | Suite | Measures |
@@ -33,6 +33,7 @@ python -m bench.build --dotnet   # .NET and OPC Foundation workers
 python -m bench.build --milo     # Eclipse Milo (x64 only)
 python -m bench.build --gopcua   # gopcua (x64 only)
 python -m bench.build --s2opc    # S2OPC (x64 only)
+python -m bench.build --async-opcua  # async-opcua with pinned Rust (x64 only)
 ```
 
 The flags can be combined. Setup downloads dependencies; sampling uses the
@@ -72,13 +73,13 @@ extend that limit.
 
 The script compares server SDKs in two scenarios:
 
-- **Reads:** Across all nine SDKs, including `node-opcua-fronts`, ten native
+- **Reads:** Across the configured SDKs, ten native
   clients keep 100 scalar Read requests in flight each, without encryption and
   with Basic256Sha256, to load the server and compare throughput and encryption
   overhead.
 - **Subscriptions:** A linear sweep of monitored items uses 10 ms and 100 ms
   sampling with 1,000 ms publishing. Client-side progress shows how capacity
-  changes with sampling frequency across all nine SDKs.
+  changes with sampling frequency across the configured SDKs.
 
 Servers are pinned to one logical CPU, with clients on separate physical cores.
 The preset requires Linux and at least two available physical cores. Saved runs

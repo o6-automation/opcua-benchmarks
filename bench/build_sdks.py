@@ -14,7 +14,7 @@
 #
 #    Copyright 2026 (c) Sterfive (Author: Etienne Rossignon)
 
-"""Install pinned toolchains and build the optional Milo, S2OPC and gopcua servers."""
+"""Install pinned toolchains and build the optional server SDKs."""
 
 from __future__ import annotations
 
@@ -110,6 +110,59 @@ def build_gopcua(verbose: bool) -> None:
     run([str(go / "bin/go"), "build", "-trimpath", "-o", str(output / "server"), "."], cwd=source, env=env, verbose=verbose)
 
 
+def rust_environment() -> dict[str, str]:
+    """Keep compiler selection, flags and Cargo state local to this benchmark."""
+    env = {
+        key: value for key, value in os.environ.items()
+        if not key.startswith(("CARGO_", "RUST")) and key not in {"LD_PRELOAD", "LD_LIBRARY_PATH"}
+    }
+    rust = ROOT / "deps/rust"
+    env.update(
+        PATH=f"{rust / 'bin'}{os.pathsep}{env.get('PATH', '')}",
+        CARGO_HOME=str(workers.STATE / "cargo"),
+        CARGO_TARGET_DIR=str(workers.STATE / "async-opcua-target"),
+        RUSTC=str(rust / "bin/rustc"),
+        RUSTDOC=str(rust / "bin/rustdoc"),
+    )
+    return env
+
+
+def prepare_async_opcua(verbose: bool) -> dict[str, str]:
+    """Install checksum-pinned Rust components and the SDK's session-only patch."""
+    rust = ROOT / "deps/rust"
+    for component in ("rustc", "rust-std", "cargo", "rustfmt-preview"):
+        pin = workers.PINS["async-opcua"]["archives"][component]
+        stamp = rust / f".{component}-sha256"
+        if not stamp.is_file() or stamp.read_text().strip() != pin["sha256"]:
+            bundle = unpack("async-opcua", component)
+            run(
+                ["sh", str(bundle / "install.sh"), f"--prefix={rust}", "--disable-ldconfig"],
+                cwd=bundle, env=os.environ.copy(), verbose=verbose,
+            )
+            stamp.write_text(pin["sha256"] + "\n")
+    source = unpack("async-opcua", "source")
+    patch = workers.SDKS["async-opcua"].source / "session-nonce.patch"
+    env = rust_environment()
+    # --check rejects a changed upstream source; --reverse --check recognizes
+    # an already applied patch without modifying it a second time.
+    command = ["git", "apply", "--directory", str(source.relative_to(ROOT))]
+    if subprocess.run(command + ["--check", str(patch)], cwd=ROOT, env=env, capture_output=True).returncode == 0:
+        run(command + [str(patch)], cwd=ROOT, env=env, verbose=verbose)
+    else:
+        run(command + ["--reverse", "--check", str(patch)], cwd=ROOT, env=env, verbose=verbose)
+    return env
+
+
+def build_async_opcua(verbose: bool) -> None:
+    env = prepare_async_opcua(verbose)
+    sdk = workers.SDKS["async-opcua"]
+    run(
+        [str(ROOT / "deps/rust/bin/cargo"), "build", "--release", "--locked", "--jobs", "2"],
+        cwd=sdk.source, env=env, verbose=verbose,
+    )
+    shutil.copy2(Path(env["CARGO_TARGET_DIR"]) / "release/benchmark-async-opcua", sdk.output / "server")
+
+
 def cmake_install(source: Path, build: Path, options: list[str], verbose: bool) -> None:
     env = os.environ.copy()
     run(
@@ -187,6 +240,7 @@ BUILDERS = {
     "milo": build_milo,
     "s2opc": build_s2opc,
     "gopcua": build_gopcua,
+    "async-opcua": build_async_opcua,
     "node-opcua-fronts": build_node_opcua_fronts,
 }
 
@@ -220,6 +274,10 @@ def build_one(name: str, *, verbose: bool, force: bool) -> bool:
         }
         if name == "s2opc":
             manifest["compile_limits"] = S2OPC_LIMITS
+        if name == "async-opcua":
+            manifest["source_commit"] = workers.PINS[name]["commit"]
+            manifest["cargo_lock_sha256"] = workers.file_hash(sdk.source / "Cargo.lock")
+            manifest["patches"] = {"session-nonce.patch": workers.file_hash(sdk.source / "session-nonce.patch")}
         temporary = marker.with_suffix(".tmp")
         temporary.write_text(json.dumps(manifest, sort_keys=True, indent=2) + "\n")
         temporary.replace(marker)

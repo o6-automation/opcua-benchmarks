@@ -48,9 +48,9 @@ OPTIONS = {
     "implementation": ConfigOption(
         "varying",
         list(SERVERS),
-        varying(one_of(*SERVERS, *FRONTS)),
+        varying(one_of(*SERVERS, *FRONTS, "async-opcua")),
         "Server SDKs; every case uses the same native setup/client worker. "
-        "node-opcua-fronts is opt-in.",
+        "node-opcua-fronts and async-opcua are opt-in.",
     ),
     **strategy.OPTIONS,
     "items_start": ConfigOption(

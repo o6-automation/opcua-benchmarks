@@ -4,6 +4,8 @@ Measures Read/Write service throughput with separate client and server processes
 Supported implementations are `open62541`, `o6-python`, `asyncua`, `ua-dotnet`, and
 `node-opcua`. The direct asyncua/o6 pairings are excluded. Node and .NET require
 [optional builds](../README.md#setup).
+The [server-only SDKs](../common/SDK_SERVERS.md), including Rust's `async-opcua`,
+can be paired with any supported client, for example `open62541:async-opcua`.
 
 ```sh
 python -m bench.throughput new bench.db

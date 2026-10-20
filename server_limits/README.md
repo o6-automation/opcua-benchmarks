@@ -4,6 +4,8 @@ Measures server throughput, latency, errors, and memory as client count and
 outstanding requests increase. A fixed open62541 C client drives each selected
 server: `open62541`, `o6-python`, `asyncua`, or optional `ua-dotnet`/`node-opcua`.
 The workload uses scalar Reads without encryption.
+The [server-only SDKs](../common/SDK_SERVERS.md), including `async-opcua` (Rust),
+are also supported through `implementation`.
 
 ```sh
 python -m bench.server_limits new bench.db

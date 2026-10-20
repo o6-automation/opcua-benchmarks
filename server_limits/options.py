@@ -31,7 +31,7 @@ from common.options import (
 
 
 _IMPLEMENTATIONS: tuple[str, ...] = (
-    "open62541", "o6-python", "asyncua", "ua-dotnet", "node-opcua", "milo", "s2opc", "gopcua", "node-opcua-fronts"
+    "open62541", "o6-python", "asyncua", "ua-dotnet", "node-opcua", "milo", "s2opc", "gopcua", "node-opcua-fronts", "async-opcua"
 )
 _MIN_SAMPLES = 7
 _SAMPLES_DEFAULT = 7
@@ -44,7 +44,7 @@ OPTIONS: dict[str, ConfigOption] = {
         coerce=varying(one_of(*_IMPLEMENTATIONS)),
         help=(
             "Server implementations to push to their limit, each measured against the "
-            "same fixed open62541 C client. ua-dotnet, node-opcua, milo, s2opc and gopcua are opt-in. "
+            "same fixed open62541 C client. ua-dotnet, node-opcua, milo, s2opc, gopcua, node-opcua-fronts and async-opcua are opt-in. "
             "Delete the ones you do not want measured."
         ),
     ),

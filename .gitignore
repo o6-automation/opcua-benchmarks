@@ -41,4 +41,7 @@ results/
 /deps/s2opc-src/
 /deps/s2opc-build/
 /deps/sdk-state/
+/deps/rust/
+/deps/rust-dist/
+/deps/async-opcua-src/
 target/

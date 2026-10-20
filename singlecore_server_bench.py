@@ -19,12 +19,12 @@
 
 Compare server SDKs in two scenarios:
 
-- Reads: Across all nine SDKs, ten native clients keep 100 scalar Read requests in flight each,
+- Reads: Across the configured SDKs, ten native clients keep 100 scalar Read requests in flight each,
   without encryption and with Basic256Sha256, to load the server and compare
   throughput and encryption overhead.
 - Subscriptions: A linear sweep of monitored items uses 10 ms and 100 ms
   sampling with 1,000 ms publishing. Client-side progress shows how capacity
-  changes with sampling frequency across all nine SDKs.
+  changes with sampling frequency across the configured SDKs.
 
 Servers use one logical CPU; clients use separate physical cores.
 Requires Linux with at least two available physical cores.
@@ -58,10 +58,10 @@ import subprocess
 import sys
 
 SERVERS = [
-    "open62541", "o6-python", "asyncua", "node-opcua", "ua-dotnet", "milo", "gopcua", "s2opc"
+    "open62541", "o6-python", "asyncua", "node-opcua", "ua-dotnet", "milo", "gopcua", "s2opc", "async-opcua"
 ]
 SAMPLES = 3
-BUILD_FLAGS = ["--node", "--node-opcua-fronts", "--dotnet", "--milo", "--gopcua", "--s2opc"]
+BUILD_FLAGS = ["--node", "--node-opcua-fronts", "--dotnet", "--milo", "--gopcua", "--s2opc", "--async-opcua"]
 RUN_NAME = "singlecore-server"
 PLOT_DPI = 600
 CONFIG = {
@@ -102,6 +102,7 @@ SDK_LABELS = {
     "milo": "Milo (Java)",
     "gopcua": "gopcua (Go)",
     "s2opc": "S2OPC (C)",
+    "async-opcua": "async-opcua (Rust)",
 }
 
 SDK_COLORS = {
@@ -114,6 +115,7 @@ SDK_COLORS = {
     "milo": "#7555A3",
     "gopcua": "#2878B5",
     "s2opc": "#A65383",
+    "async-opcua": "#BD661A",
 }
 
 SECURITY_POLICIES = ("None", "Basic256Sha256")
@@ -247,8 +249,8 @@ def read_throughput_results(connection, name: str) -> tuple[list[ThroughputResul
         .get("node_modules/node-opcua", {})
         .get("version"),
     }
-    for sdk in ("milo", "gopcua", "s2opc"):
-        recorded = metadata.get(f"sdk_{sdk}", {})
+    for sdk in ("milo", "gopcua", "s2opc", "async-opcua"):
+        recorded = metadata.get(f"sdk_{sdk.replace('-', '_')}", {})
         versions[sdk] = recorded.get("runtime_info", {}).get("sdk") or recorded.get("sdk", "").rsplit(" ", 1)[-1]
     # Both Node variants use the same pinned installation recorded by this run.
     versions["node-opcua-fronts"] = versions["node-opcua"]
