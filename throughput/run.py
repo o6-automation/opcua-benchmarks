@@ -35,6 +35,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from common.bench_db import BenchDB, _freeze
+from common import open62541
 from common.certificates import certificate_material, require_certificate_tool, secure_arguments
 from common.contract import SERVER_READY
 from common.oom import (
@@ -215,7 +216,7 @@ def applicable(config_key: dict) -> bool:
 
 def holds_c_binaries(value: object, fields: dict) -> bool | str:
     """The compiled open62541 programs the matrix needs must be on disk."""
-    directory = Path(str(value)).resolve()
+    directory = open62541.binary_directory("throughput", str(value))
     pairs = [pair_to_tuple(pair) for pair in fields.get("pair") or []]
     wanted = set()
     if any(server == "open62541" for _, server in pairs):
@@ -938,6 +939,13 @@ def cmd_sample(args: argparse.Namespace) -> int:
         {"server"} if any(s == "node-opcua" for _, s in pairs) else set()
     )
     try:
+        open62541.prepare_metadata(
+            store,
+            "throughput",
+            args.amend,
+            build=uniform["c_binary_dir"],
+            selected=any("open62541" in pair for pair in pairs),
+        )
         node_workers.prepare_metadata(
             store,
             bool(node_roles),
@@ -1046,7 +1054,7 @@ def cmd_sample(args: argparse.Namespace) -> int:
     )
 
     print(f":: worker sample collection timeout: {sample_timeout}s", file=sys.stderr)
-    c_binary_dir = Path(uniform["c_binary_dir"]).resolve()
+    c_binary_dir = open62541.binary_directory(SUITE_NAME, uniform["c_binary_dir"])
     c_server_path = executable(c_binary_dir, "server")
     c_client_path = executable(c_binary_dir, "client")
     # One array set for the whole run: every server exposes it and every client

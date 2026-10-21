@@ -29,7 +29,7 @@ import tempfile
 import threading
 import time
 
-from common import dotnet_workers, node_workers, sdk_workers
+from common import dotnet_workers, node_workers, sdk_workers, open62541
 from common.bench_db import BenchDB
 from common.contract import SERVER_READY
 from common.histogram import BUCKETS, merge, percentile_ms
@@ -89,7 +89,12 @@ def fingerprint():
             versions[package] = importlib.metadata.version(package)
         except importlib.metadata.PackageNotFoundError:
             versions[package] = "unavailable"
-    return {"sha256": digest.hexdigest(), "python_packages": versions, "cpus": placement()}
+    return {
+        "sha256": digest.hexdigest(),
+        "python_packages": versions,
+        "cpus": placement(),
+        "open62541": open62541.provenance(SUITE, BINARY_DIR),
+    }
 
 
 def aggregate(raw, start_ns, duration_ms):

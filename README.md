@@ -42,6 +42,11 @@ installed artifacts. See [Node](common/node/README.md),
 for details. Use `--rebuild` for a clean build
 and `--verbose` for compiler output.
 
+The native workers use the pinned open62541 source with fatal-only logging
+(`UA_LOGLEVEL=600`). Measurements record its commit, compiler, build options,
+generated configuration and binary hashes. Rebuild with `python -m bench.build`
+after updating sources; changed native workers require a new named run.
+
 ## Run
 
 ```sh
@@ -99,6 +104,10 @@ workers and saves results and reports to
 previous results; `--continue` keeps completed measurements and resumes with
 the saved settings, including across dates.
 An optional database path selects another file for running, continuing, or plotting.
+The preset collects seven throughput repetitions. Its collection timeout is ten
+minutes for slower encrypted SDKs; `BENCH_SAMPLE_TIMEOUT` overrides this limit
+in seconds without changing the measured workload. Other throughput runs default
+to 120 seconds.
 
 Create the throughput and 10 ms / 100 ms subscription plots from saved results:
 
@@ -109,10 +118,18 @@ python singlecore_server_bench.py results/bench-singlecore-server-2026-10-12.db 
 
 Without a database argument, `--plot` uses today's database. PNGs are saved in
 `<database-name>.plots/` beside it; plotting does not run benchmarks or clear results.
+Throughput bars and labels show the mean, with ticks at ±1 sample standard
+deviation (n−1 denominator). SDKs are ordered by mean unencrypted throughput;
+missing policy measurements are labelled "No result".
 Subscription plots use a logarithmic x-axis for both sampling periods.
 The top panels rank servers from highest to lowest passing load, above the missed-percentage curves.
 
 ## Contributing
+
+Shared regression tests run with `python -m pytest tests` after installing
+`pytest`. Build the native workers first, then use
+`BENCH_NATIVE_LIVE=1 python -m pytest tests/test_native_live.py` for live checks
+across all four suites, including encrypted throughput and subscription clocks.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the DCO sign-off requirement and
 additional contributor license grant to o6 Automation GmbH.

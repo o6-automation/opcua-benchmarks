@@ -270,6 +270,7 @@ class Worker:
         await self.process.stdin.drain()
 
     async def receive(self, expected, timeout):
+        deadline = time.monotonic() + timeout
         try:
             line = await asyncio.wait_for(self.process.stdout.readline(), timeout)
         except TimeoutError as error:
@@ -286,6 +287,24 @@ class Worker:
         event = json.loads(line)
         if event.get("event") != expected:
             raise RuntimeError(f"Expected {expected}, got {event}")
+        if expected == "ready" and event.get("sdk") == "s2opc":
+            # S2OPC reports startup before its asynchronous listener opens.
+            port = int(self.command[-4])
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError(f"S2OPC endpoint did not start listening on port {port}")
+                if self.process.returncode is not None:
+                    raise RuntimeError(f"S2OPC exited before listening (exit {self.process.returncode})")
+                try:
+                    _, writer = await asyncio.wait_for(asyncio.open_connection("127.0.0.1", port), remaining)
+                except ConnectionRefusedError:
+                    await asyncio.sleep(min(0.01, remaining))
+                    continue
+                writer.close()
+                await asyncio.wait_for(writer.wait_closed(), max(0, deadline - time.monotonic()))
+                event["listener_ready"] = True
+                break
         return event
 
     async def __aexit__(self, kind, error, traceback):

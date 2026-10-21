@@ -219,8 +219,9 @@ OPTIONS: dict[str, ConfigOption] = {
         default="throughput/open62541/build",
         coerce=uniform(path_string),
         help=(
-            "Directory holding the compiled open62541 executables (server / client), "
-            "relative to the repository root. Build them first per the README; pairs "
+            "Directory holding the compiled open62541 executables (server / client). "
+            "The default belongs to the public harness; custom relative paths use the working directory. "
+            "Build them first per the README; pairs "
             "that need them fail if they are missing."
         ),
     ),

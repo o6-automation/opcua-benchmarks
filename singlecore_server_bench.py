@@ -50,17 +50,16 @@ from dataclasses import dataclass
 from datetime import datetime
 import json
 from math import isclose, isfinite, log10
+import os
 from pathlib import Path
 import shlex
 import sqlite3
-from statistics import median
+from statistics import mean, stdev
 import subprocess
 import sys
 
-SERVERS = [
-    "open62541", "o6-python", "asyncua", "node-opcua", "ua-dotnet", "milo", "gopcua", "s2opc", "async-opcua"
-]
-SAMPLES = 3
+SERVERS = ["open62541", "o6-python", "asyncua", "node-opcua", "ua-dotnet", "milo", "gopcua", "s2opc", "async-opcua"]
+SAMPLES = 7
 BUILD_FLAGS = ["--node", "--node-opcua-fronts", "--dotnet", "--milo", "--gopcua", "--s2opc", "--async-opcua"]
 RUN_NAME = "singlecore-server"
 PLOT_DPI = 600
@@ -94,7 +93,7 @@ INK, GRAY, BACKGROUND = "#111315", "#697078", "#F4F5F6"
 
 SDK_LABELS = {
     "ua-dotnet": ".NETStandard (C#)",
-    "open62541": "o6\\open62541 (C)",
+    "open62541": "open62541 (C)",
     "o6-python": "o6\\Python (Python)",
     "asyncua": "asyncua (Python)",
     "node-opcua": "node-opcua (TypeScript)",
@@ -157,6 +156,17 @@ def throughput_complete(database, samples):
 
 
 def measure(database, samples):
+    # A million encrypted reads can outlive the generic collection limit.
+    previous = os.environ.get("BENCH_SAMPLE_TIMEOUT")
+    os.environ.setdefault("BENCH_SAMPLE_TIMEOUT", "600")
+    try:
+        return _measure(database, samples)
+    finally:
+        if previous is None:
+            os.environ.pop("BENCH_SAMPLE_TIMEOUT", None)
+
+
+def _measure(database, samples):
     status = 0
     try:
         for suite, count in (("throughput", samples), ("subscription", 1)):
@@ -186,7 +196,11 @@ class ThroughputResult:
 
     @property
     def middle(self) -> float:
-        return median(self.rates)
+        return mean(self.rates)
+
+    @property
+    def deviation(self) -> float:
+        return stdev(self.rates) if len(self.rates) > 1 else 0
 
 
 @dataclass(frozen=True)
@@ -229,7 +243,7 @@ def read_throughput_results(connection, name: str) -> tuple[list[ThroughputResul
     if len(conditions) > 1:
         raise ValueError("Throughput results have mixed workload settings; cannot compare them in one plot.")
     sdks = {sdk for sdk, policy in grouped}
-    order = sorted(sdks, key=lambda sdk: (-median(grouped.get((sdk, "None"), [0])), sdk))
+    order = sorted(sdks, key=lambda sdk: (-mean(grouped.get((sdk, "None"), [0])), sdk))
     results = [
         ThroughputResult(sdk, policy, tuple(grouped[sdk, policy]))
         for sdk in order
@@ -249,6 +263,8 @@ def read_throughput_results(connection, name: str) -> tuple[list[ThroughputResul
         .get("node_modules/node-opcua", {})
         .get("version"),
     }
+    if metadata.get("open62541", {}).get("source_commit"):
+        versions["open62541"] = metadata["open62541"]["source_commit"][:12]
     for sdk in ("milo", "gopcua", "s2opc", "async-opcua"):
         recorded = metadata.get(f"sdk_{sdk.replace('-', '_')}", {})
         versions[sdk] = recorded.get("runtime_info", {}).get("sdk") or recorded.get("sdk", "").rsplit(" ", 1)[-1]
@@ -298,9 +314,7 @@ def read_subscription_results(connection, name: str) -> dict[int, dict[str, list
             and isclose(mean, summary["progress_fraction_mean"], abs_tol=1e-12)
         ):
             raise ValueError(f"Subscription counters disagree with the summary for {identity}.")
-        conditions[sampling_ms].add(
-            (summary["warmup_ms"], summary["measured_duration_ms"], observation["setup"]["queue_size"])
-        )
+        conditions[sampling_ms].add((summary["warmup_ms"], summary["measured_duration_ms"], observation["setup"]["queue_size"]))
         grouped[sampling_ms][sdk].append(SubscriptionObservation(items, 100 * worst, 100 * mean, worst >= 0.99))
     if any(len(values) > 1 for values in conditions.values()):
         raise ValueError("Subscription results have mixed measurement windows or queue sizes.")
@@ -353,6 +367,8 @@ def add_plot_watermark(fig):
 
 
 def draw_throughput(results: list[ThroughputResult], versions: dict[str, str]):
+    """Plot the mean and ±1 sample standard deviation across repetitions."""
+    from matplotlib import patheffects
     from matplotlib import pyplot as plt
     from matplotlib.colors import to_rgba
     from matplotlib.offsetbox import AnchoredOffsetbox, HPacker, TextArea, VPacker
@@ -363,14 +379,14 @@ def draw_throughput(results: list[ThroughputResult], versions: dict[str, str]):
     sdks = list(dict.fromkeys(r.sdk for r in results))
     height = 4.1 + 0.6 * len(sdks)
     fig, ax = plt.subplots(figsize=(8.4, height))
-    fig.subplots_adjust(left=0.31, right=0.96, bottom=2.4 / height, top=1 - 1.4 / height)
+    fig.subplots_adjust(left=0.31, right=0.96, bottom=2.7 / height, top=1 - 1.65 / height)
     fig.suptitle(
         "OPC UA Server Throughput\n(Single Scalar Reads)",
         fontproperties=title_font,
         y=1 - 0.25 / height,
         linespacing=1.25,
     )
-    centers = [result.middle for result in results]
+    limits = []
     for result in results:
         encrypted = result.policy == "Basic256Sha256"
         position = sdks.index(result.sdk) + (0.17 if encrypted else -0.17)
@@ -384,9 +400,26 @@ def draw_throughput(results: list[ThroughputResult], versions: dict[str, str]):
             hatch="////" if encrypted else None,
             zorder=3,
         )
+        lower, upper = result.middle - result.deviation, result.middle + result.deviation
+        limits.append((lower, upper))
+        if len(result.rates) > 1:
+            bars = ax.errorbar(
+                result.middle,
+                position,
+                xerr=result.deviation,
+                fmt="none",
+                ecolor=INK,
+                elinewidth=0.9,
+                capsize=3,
+                capthick=0.9,
+                zorder=4,
+            )
+            # Keep ticks visible on dark and hatched bars.
+            for artist in (*bars[1], *bars[2]):
+                artist.set_path_effects([patheffects.Stroke(linewidth=2.1, foreground=BACKGROUND), patheffects.Normal()])
         ax.annotate(
             f"{result.middle:,.0f}",
-            (result.middle, position),
+            (upper, position),
             xytext=(5, 0),
             textcoords="offset points",
             ha="left",
@@ -395,6 +428,29 @@ def draw_throughput(results: list[ThroughputResult], versions: dict[str, str]):
             color=INK,
             zorder=4,
         )
+    measured = {(result.sdk, result.policy) for result in results}
+    for index, sdk in enumerate(sdks):
+        for policy, offset in (("None", -0.17), ("Basic256Sha256", 0.17)):
+            if (sdk, policy) not in measured:
+                ax.annotate(
+                    "No result",
+                    (0, index + offset),
+                    xytext=(5, 0),
+                    textcoords="offset points",
+                    ha="left",
+                    va="center",
+                    fontsize=10,
+                    color=GRAY,
+                )
+    fig.text(
+        0.5,
+        1 - 1.45 / height,
+        "Bars and labels: mean · Ticks: ±1 sample standard deviation",
+        ha="center",
+        va="center",
+        fontsize=10,
+        color=GRAY,
+    )
     fig.legend(
         handles=[
             Patch(facecolor=GRAY, label="Unencrypted"),
@@ -415,8 +471,8 @@ def draw_throughput(results: list[ThroughputResult], versions: dict[str, str]):
         columnspacing=2.5,
     )
     ax.set_yticks(range(len(sdks)), [SDK_LABELS[sdk] for sdk in sdks])
-    ax.invert_yaxis()
-    ax.set_xlim(0, max(centers) * 1.18)
+    ax.set_ylim(len(sdks) - 0.5, -0.5)
+    ax.set_xlim(min(0, min(lower for lower, _ in limits)), max(upper for _, upper in limits) * 1.18)
     ax.xaxis.set_major_locator(MaxNLocator(nbins=5, steps=[1, 2, 2.5, 5, 10]))
     ax.xaxis.set_minor_locator(AutoMinorLocator(10))
     ax.xaxis.set_major_formatter(FuncFormatter(lambda value, _: f"{value:,.0f}"))
@@ -508,9 +564,7 @@ def subscription_marker_indices(rows, width_points, height_points, sample_rate=1
         x0, y0 = points[first]
         dx, dy = points[last][0] - x0, points[last][1] - y0
         norm = (dx * dx + dy * dy) ** 0.5
-        distances = [
-            (abs(dy * (points[i][0] - x0) - dx * (points[i][1] - y0)) / norm, i) for i in range(first + 1, last)
-        ]
+        distances = [(abs(dy * (points[i][0] - x0) - dx * (points[i][1] - y0)) / norm, i) for i in range(first + 1, last)]
         distance, index = max(distances)
         if distance > 2.0:
             keep.add(index)
@@ -617,10 +671,7 @@ def draw_subscriptions(series, sampling_ms=10):
         pad=12,
         bbox={"facecolor": BACKGROUND, "edgecolor": "none", "pad": 2},
     )
-    capacities = [
-        (sdk, max((r.items * sample_rate for r in rows if r.passed), default=0))
-        for sdk, rows in series.items()
-    ]
+    capacities = [(sdk, max((r.items * sample_rate for r in rows if r.passed), default=0)) for sdk, rows in series.items()]
     capacities.sort(key=lambda item: item[1], reverse=True)
     for index, (sdk, limit) in enumerate(capacities):
         color = SDK_COLORS[sdk]
@@ -761,9 +812,7 @@ def main(argv=None):
             if database.parent == Path(".") and not database.exists():
                 database = RESULTS / database
         elif args.resume:
-            database = max(
-                RESULTS.glob(f"bench-{RUN_NAME}-*.db"), key=lambda path: path.stat().st_mtime_ns, default=None
-            )
+            database = max(RESULTS.glob(f"bench-{RUN_NAME}-*.db"), key=lambda path: path.stat().st_mtime_ns, default=None)
             if database is None:
                 raise ValueError("No saved singlecore server benchmark found to continue.")
         if args.plot:

@@ -32,3 +32,6 @@ prevents queue admission failures under the configured load. The effective
 limit is recorded in `ua_dotnet_diagnostics.max_queued_request_count`. The
 `server_limits` profile keeps the SDK default; these throughput results
 describe the configured server.
+
+The contract and clock test helper builds separately from the SDK workers:
+`deps/dotnet/dotnet build tests/dotnet/Benchmark.Tests.csproj -c Release -o tests/dotnet/build`.

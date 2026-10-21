@@ -21,6 +21,7 @@ from contextlib import closing
 import json
 
 from common.bench_db import BenchDB, benchmark_scope
+from common import open62541
 from common.progress import Progress
 from subscription.options import OPTIONS, measurement_window
 from subscription.amend import amended_plan, saved_cases
@@ -76,6 +77,7 @@ def cmd_sample(database, num_samples=1, amend=False, skip_failed=False):
             uniform, searches = amended_plan(database, store)
         else:
             searches = saved_cases(store)
+        open62541.prepare_metadata(store, SUITE, amend)
         saved = {json.dumps(row["key"], sort_keys=True): row["observation"] for row in store.results.values()}
         failures = store.failures
         failed = {row["configuration"] for row in failures}

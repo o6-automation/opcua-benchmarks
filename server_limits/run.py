@@ -35,7 +35,7 @@ import time
 from collections.abc import Callable
 from pathlib import Path
 
-from common import dotnet_workers, node_workers, sdk_workers
+from common import dotnet_workers, node_workers, sdk_workers, open62541
 from common.bench_db import BenchDB
 from common.contract import DEFAULT_ENDPOINT, SERVER_READY
 from common.histogram import BUCKETS as HISTOGRAM_BUCKETS
@@ -88,7 +88,7 @@ def applicable(config_key: dict) -> bool:
 
 
 def holds_c_binaries(value: object, fields: dict) -> bool | str:
-    directory = Path(str(value)).resolve()
+    directory = open62541.binary_directory("server_limits", str(value))
     missing = [
         str(path) for path in (executable(directory, "server"), executable(directory, "hammer_client")) if not path.is_file()
     ]
@@ -455,9 +455,7 @@ def run_one_implementation(
                 "O6_BENCHMARK_PKI_ROOT": pki_dir.name,
             }
             if pki_dir
-            else sdk_workers.environment(implementation)
-            if implementation in sdk_workers.SDKS
-            else None
+            else sdk_workers.environment(implementation) if implementation in sdk_workers.SDKS else None
         ),
     )
     try:
@@ -845,6 +843,7 @@ def cmd_sample(args: argparse.Namespace) -> int:
 
     implementations = varying.get("implementation") or list(IMPLEMENTATIONS[:3])
     try:
+        open62541.prepare_metadata(store, "server_limits", bool(getattr(args, "amend", False)), build=uniform["c_binary_dir"])
         node_workers.prepare_metadata(
             store, "node-opcua" in implementations, {"server"}, "server_limits", bool(getattr(args, "amend", False))
         )
@@ -874,7 +873,7 @@ def cmd_sample(args: argparse.Namespace) -> int:
 
     store.metadata["partial"] = True
 
-    c_binary_dir = Path(uniform["c_binary_dir"]).resolve()
+    c_binary_dir = open62541.binary_directory(SUITE_NAME, uniform["c_binary_dir"])
     c_server_path = executable(c_binary_dir, "server")
     c_client_path = executable(c_binary_dir, "hammer_client")
 

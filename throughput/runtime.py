@@ -14,8 +14,18 @@
 #
 #    Copyright 2026 (c) o6 Automation GmbH (Author: Daniel Opitz)
 
-"""Worker collection policy, replaceable by an embedding checkout."""
+"""Worker collection limits, independent of the measured workload."""
+
+import os
 
 
 def sample_timeout_seconds() -> int:
-    return 120
+    """Resolve the collection limit without changing the workload or row identity."""
+    value = os.environ.get("BENCH_SAMPLE_TIMEOUT", "120")
+    try:
+        seconds = int(value)
+    except ValueError:
+        seconds = 0
+    if seconds <= 0:
+        raise RuntimeError("BENCH_SAMPLE_TIMEOUT must be a positive integer number of seconds")
+    return seconds

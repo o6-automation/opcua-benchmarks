@@ -24,8 +24,8 @@
 #include <poll.h>
 #include <open62541/plugin/eventloop.h>
 
-/* Call on a default configuration before constructing the client/server:
- * server defaults start the loop eagerly, but no SDK timers exist yet. */
+/* Call before constructing the client/server, while no SDK timers exist.
+ * Accept both fresh loops and defaults that already started the loop. */
 static UA_StatusCode configure_clock(UA_EventLoop *loop) {
     if(!loop) return UA_STATUSCODE_BADINTERNALERROR;
     if(loop->state == UA_EVENTLOOPSTATE_STARTED) {
