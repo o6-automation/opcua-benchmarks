@@ -55,24 +55,59 @@ def pin_to_cpus(cpu_ids: Iterable[int], *, strict: bool = False) -> Callable[[],
     return pin
 
 
-def partition_cpus(total: int, *, single_core: bool = False) -> tuple[set[int], set[int]]:
-    """Split CPUs equally, or reserve one allowed server CPU and exclude its SMT siblings from clients."""
+_CPU_SYSFS = Path("/sys/devices/system/cpu")
+
+
+def _parse_cpu_list(text: str) -> set[int]:
+    """Parse a kernel CPU list such as ``0,8`` or ``0-1,8-9``."""
+    cpus: set[int] = set()
+    for group in text.strip().split(","):
+        first, separator, last = group.partition("-")
+        cpus.update(range(int(first), int(last) + 1) if separator else (int(first),))
+    return cpus
+
+
+def _core_groups(allowed: set[int], sysfs: Path = _CPU_SYSFS) -> list[frozenset[int]] | None:
+    """Group the allowed CPUs by physical core, or ``None`` when the topology is unreadable."""
+    groups: dict[frozenset[int], None] = {}
+    for cpu in sorted(allowed):
+        try:
+            siblings = _parse_cpu_list((sysfs / f"cpu{cpu}" / "topology" / "thread_siblings_list").read_text())
+        except (OSError, ValueError):
+            return None
+        groups[frozenset(siblings & allowed) or frozenset((cpu,))] = None
+    return sorted(groups, key=min)
+
+
+def partition_cpus(total: int, *, single_core: bool = False, sysfs: Path = _CPU_SYSFS) -> tuple[set[int], set[int]]:
+    """Split the CPUs between server and clients by physical core.
+
+    The server gets ``ceil(cores / 2)`` whole cores (every SMT sibling) and the clients the
+    remaining whole cores, so the two never share a core whatever the CPU numbering. Without
+    readable topology files (non-Linux, containers) the logical CPUs are split numerically.
+    With ``single_core`` the server gets one allowed CPU and the clients exclude its siblings.
+    """
     if single_core:
         if not hasattr(os, "sched_getaffinity"):
             raise RuntimeError("Single-core CPU allocation requires Linux CPU affinity support")
         allowed = set(os.sched_getaffinity(0))
         server_cpu = min(allowed)
-        topology = Path(f"/sys/devices/system/cpu/cpu{server_cpu}/topology/thread_siblings_list")
-        siblings = set()
-        for group in topology.read_text().strip().split(","):
-            first, separator, last = group.partition("-")
-            siblings.update(range(int(first), int(last) + 1) if separator else (int(first),))
+        topology = sysfs / f"cpu{server_cpu}" / "topology" / "thread_siblings_list"
+        siblings = _parse_cpu_list(topology.read_text())
         clients = allowed - siblings - {server_cpu}
         if not clients:
             raise RuntimeError("Single-core CPU allocation requires at least two available physical cores")
         return {server_cpu}, clients
     if total <= 0:
         return set(), set()
+    if hasattr(os, "sched_getaffinity"):
+        cores = _core_groups(set(os.sched_getaffinity(0)), sysfs)
+        if cores is not None and len(cores) > 1:
+            server_cores = (len(cores) + 1) // 2
+            return (
+                set().union(*cores[:server_cores]),
+                set().union(*cores[server_cores:]),
+            )
     server_count = (total + 1) // 2
     server_cpus = set(range(server_count))
     client_cpus = set(range(server_count, total))
