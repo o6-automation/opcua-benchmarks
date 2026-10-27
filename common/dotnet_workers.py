@@ -112,7 +112,12 @@ def preflight(roles: set[str], profile: str) -> dict:
         raise RuntimeError(f".NET workers are unavailable or stale: {detail}. {BUILD_INSTRUCTION}") from error
 
 
-def prepare_metadata(store, selected: bool, roles: set[str], profile: str, amend: bool) -> None:
+def throughput_queue_capacity(clients: int, depth: int) -> int:
+    """Leave admission headroom above the measured pipeline and the three SDK reserves."""
+    return max(200, 2 * clients * depth + 3)
+
+
+def prepare_metadata(store, selected: bool, roles: set[str], profile: str, amend: bool, capacity: dict | None = None) -> None:
     """Require complete, equal provenance before appending to existing .NET samples."""
     rows = [
         row
@@ -128,6 +133,8 @@ def prepare_metadata(store, selected: bool, roles: set[str], profile: str, amend
             store.metadata["ua_dotnet"] = store.stored_metadata["ua_dotnet"]
         return
     current = preflight(roles, profile)
+    if capacity is not None:
+        current["throughput_capacity"] = capacity
     stored = store.stored_metadata.get("ua_dotnet")
     if rows and amend and stored != current:
         raise RuntimeError("Existing .NET samples have missing or incompatible provenance; use a new named run.")

@@ -106,10 +106,6 @@ BYTES_PER_VALUE = 4
 # This is the sizing policy :mod:`common.oom` deliberately leaves to the runner
 # — see :func:`worker_address_space` for how a share is cut from it.
 MEMORY_BUDGET_FRACTION = 0.6
-# Request-queue slots UA-.NETStandard 2.0 keeps for its bootstrap, reconnect, and
-# control reserves (Balanced resource isolation, one each). The runner adds them
-# so the whole client pipeline still fits in the shared part of the queue.
-DOTNET_QUEUE_RESERVED_SLOTS = 3
 
 
 def megabytes_per_second(values: int, elapsed_ns: int) -> float:
@@ -935,6 +931,17 @@ def cmd_sample(args: argparse.Namespace) -> int:
     dotnet_roles = ({"client"} if any(c == "ua-dotnet" for c, _ in pairs) else set()) | (
         {"server"} if any(s == "ua-dotnet" for _, s in pairs) else set()
     )
+    clients_axis = varying.get("clients") or [1]
+    widest_client_count = max(int(value) for value in (clients_axis if isinstance(clients_axis, list) else [clients_axis]))
+    dotnet_capacity = (
+        {
+            "max_queued_request_count": dotnet_workers.throughput_queue_capacity(
+                widest_client_count, int(uniform["max_outstanding"]) if "async" in varying["mode"] else 1
+            )
+        }
+        if "server" in dotnet_roles
+        else None
+    )
     node_roles = ({"client"} if any(c == "node-opcua" for c, _ in pairs) else set()) | (
         {"server"} if any(s == "node-opcua" for _, s in pairs) else set()
     )
@@ -960,7 +967,7 @@ def cmd_sample(args: argparse.Namespace) -> int:
                 ),
             },
         )
-        dotnet_workers.prepare_metadata(store, bool(dotnet_roles), dotnet_roles, "throughput", args.amend)
+        dotnet_workers.prepare_metadata(store, bool(dotnet_roles), dotnet_roles, "throughput", args.amend, dotnet_capacity)
         sdk_workers.prepare_metadata(store, {s for _, s in pairs if s in sdk_workers.SDKS}, "throughput", args.amend)
     except RuntimeError as error:
         print(error, file=sys.stderr)
@@ -1113,8 +1120,6 @@ def cmd_sample(args: argparse.Namespace) -> int:
     # busiest of them. The clients are held to the same share as the server —
     # one client's footprint and the server's were within a tenth of each other
     # on the run this limit exists because of.
-    clients_axis = varying.get("clients") or [1]
-    widest_client_count = max(int(value) for value in (clients_axis if isinstance(clients_axis, list) else [clients_axis]))
     available_bytes = available_memory_bytes() or 0
     per_process_bytes = worker_address_space(widest_client_count, available_bytes)
     if node_roles:
@@ -1129,12 +1134,7 @@ def cmd_sample(args: argparse.Namespace) -> int:
             "process_budget_bytes": per_process_bytes,
             "available_memory_bytes": available_bytes,
         }
-        if "server" in dotnet_roles:
-            diagnostics["max_queued_request_count"] = max(
-                200,
-                widest_client_count * (int(uniform["max_outstanding"]) if "async" in varying["mode"] else 1)
-                + DOTNET_QUEUE_RESERVED_SLOTS,
-            )
+        diagnostics.update(dotnet_capacity or {})
         try:
             runtime_env = dotnet_workers.environment(per_process_bytes)
             diagnostics["managed_heap_limit_bytes"] = int(runtime_env.get("DOTNET_GCHeapHardLimit", "0"), 16)

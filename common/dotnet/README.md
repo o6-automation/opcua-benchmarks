@@ -24,14 +24,18 @@ Managed heap limits reserve 25% of the worker memory share for native/runtime
 use and do not guarantee a total RSS bound. Workers use Server GC; JIT uses
 runtime defaults.
 
-The throughput runner sizes `MaxQueuedRequestCount` to the largest selected
+The throughput runner sizes `MaxQueuedRequestCount` to twice the largest selected
 aggregate pipeline (clients × outstanding requests per client) plus the three
-slots UA-.NETStandard 2.0 reserves in the request queue for bootstrap,
-reconnect, and control work, with a minimum of the SDK default of 200. This
-prevents queue admission failures under the configured load. The effective
-limit is recorded in `ua_dotnet_diagnostics.max_queued_request_count`. The
-`server_limits` profile keeps the SDK default; these throughput results
-describe the configured server.
+slots UA-.NETStandard 2.0 reserves for bootstrap, reconnect, and control work,
+with a minimum of the SDK default of 200. A queue sized exactly to the pipeline
+rejected requests during the single-core warmup; the extra capacity leaves room
+for transient admission and SDK setup/control work. Client pipeline depth and
+measured service counts stay at the configured workload.
+
+The effective limit is recorded in both `ua_dotnet.throughput_capacity` and
+`ua_dotnet_diagnostics.max_queued_request_count`. Amendment rejects a changed or
+unrecorded queue policy for existing .NET samples. The `server_limits` profile
+keeps the SDK default; throughput results describe the configured server.
 
 The contract and clock test helper builds separately from the SDK workers:
 `deps/dotnet/dotnet build tests/dotnet/Benchmark.Tests.csproj -c Release -o tests/dotnet/build`.
