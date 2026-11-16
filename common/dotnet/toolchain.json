@@ -1,7 +1,7 @@
 {
   "sdk": "10.0.401",
   "runtime": "10.0.12",
-  "source_version": "2.0.1",
+  "source_version": "2.0.2",
   "archives": {
     "linux-arm64": {
       "url": "https://builds.dotnet.microsoft.com/dotnet/Sdk/10.0.401/dotnet-sdk-10.0.401-linux-arm64.tar.gz",

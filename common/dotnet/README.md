@@ -2,7 +2,7 @@
 
 From the repository root, run `python -m bench.build --dotnet`.
 The bootstrap supports Linux x64/arm64 and installs SDK 10.0.401 and runtime
-10.0.12 locally. OPC Foundation UA-.NETStandard 2.0.1 comes from the official
+10.0.12 locally. OPC Foundation UA-.NETStandard 2.0.2 comes from the official
 nuget.org packages. SDK archives and package versions are pinned in
 `toolchain.json`, `Directory.Packages.props`, and `locks/` (with content
 hashes); restores run in locked mode and builds use Release configuration.
