@@ -38,7 +38,7 @@ def store_with_dotnet_samples(provenance):
 
 @pytest.mark.parametrize("previous", [None, {"max_queued_request_count": 1003}])
 def test_amend_rejects_changed_or_unrecorded_queue_capacity(monkeypatch, previous):
-    current = {"inputs": "same-worker", "source_version": "2.0.1"}
+    current = {"inputs": "same-worker", "source_version": "2.0.2"}
     monkeypatch.setattr(dotnet, "preflight", lambda *_: dict(current))
     saved = dict(current)
     if previous is not None:
@@ -50,7 +50,7 @@ def test_amend_rejects_changed_or_unrecorded_queue_capacity(monkeypatch, previou
 
 def test_matching_queue_capacity_can_be_amended(monkeypatch):
     capacity = {"max_queued_request_count": 2003}
-    identity = {"inputs": "same-worker", "source_version": "2.0.1"}
+    identity = {"inputs": "same-worker", "source_version": "2.0.2"}
     monkeypatch.setattr(dotnet, "preflight", lambda *_: dict(identity))
     saved = {**identity, "throughput_capacity": capacity}
     store = store_with_dotnet_samples(saved)
@@ -59,7 +59,7 @@ def test_matching_queue_capacity_can_be_amended(monkeypatch):
 
 
 def test_other_profiles_keep_their_original_provenance(monkeypatch):
-    identity = {"inputs": "same-worker", "source_version": "2.0.1"}
+    identity = {"inputs": "same-worker", "source_version": "2.0.2"}
     monkeypatch.setattr(dotnet, "preflight", lambda *_: dict(identity))
     store = store_with_dotnet_samples(identity)
     dotnet.prepare_metadata(store, True, {"server"}, "server_limits", True)

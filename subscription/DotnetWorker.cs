@@ -164,7 +164,10 @@ public static class CounterWorker
                     counter_source = "read_callback" });
                 while (true)
                 {
-                    Task<string?> input = Console.In.ReadLineAsync();
+                    // Console.In.ReadLineAsync blocks the calling thread in a synchronous read; after the awaited
+                    // server start this is a thread-pool worker, which on a one-CPU server starves sampling timers.
+                    Task<string?> input = Task.Factory.StartNew(
+                        Console.In.ReadLine, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
                     if (producer is not null && !producer.IsCompleted) await Task.WhenAny(input, producer);
                     if (producer is not null && producer.IsCompleted) await producer;
                     string? line = await input;
